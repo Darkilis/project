@@ -64,7 +64,7 @@
     </div>
 
     <!-- Заменили <div> на <form> для правильной работы мобильных клавиатур -->
-    <form id="search-panel" class="search-panel">
+    <form id="search-panel" class="search-panel" onsubmit="event.preventDefault(); return false;">
         <div class="form-row">
             <label for="start-cabinet">От:</label>
             <!-- Добавлен autocomplete="off" -->
