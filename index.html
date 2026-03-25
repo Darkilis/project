@@ -2,103 +2,132 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <!-- Добавлен viewport-fit=cover для защиты от "челок" на iPhone -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Карта этажа — Навигатор</title>
+    <title>Карта этажа v3.0</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
     <style>
-        /* Использование dvh вместо % решает проблему с нижней панелью в мобильных браузерах */
-        html, body, #map { height: 100dvh; margin: 0; padding: 0; overflow: hidden; background: #1e2937; }
+        html, body, #map { height: 100dvh; margin: 0; padding: 0; overflow: hidden; background: #1e2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         .leaflet-container { background: #1e2937; }
         
-        /* Добавлен скролл (overflow-y) для маленьких экранов */
-        .left-panel { position: absolute; top: 15px; left: 15px; z-index: 1000; display: flex; flex-direction: column; gap: 15px; max-width: calc(100% - 30px); max-height: calc(100dvh - 30px); overflow-y: auto; padding-bottom: 10px; }
-        .zoom-panel { background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 8px 12px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); display: flex; gap: 8px; width: fit-content; }
-        
-        /* Увеличен размер кнопок до 44px для удобного нажатия пальцем */
-        .zoom-panel button { width: 44px; height: 44px; background: transparent; border: 1px solid #e2e8f0; border-radius: 8px; color: #1e2937; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 16px; }
-        .zoom-panel button:hover, .zoom-panel button.active { background: #2563eb; color: white; border-color: #2563eb; }
-        
-        .search-panel { display: none; background: rgba(255,255,255,0.95); backdrop-filter: blur(10px); padding: 12px 16px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); flex-direction: column; gap: 12px; min-width: 280px; }
-        .search-panel .form-row { display: flex; align-items: center; gap: 10px; }
-        .search-panel label { font-weight: 600; color: #1e2937; white-space: nowrap; width: 40px; }
-        .search-panel input { flex: 1; padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; outline: none; width: 100%; } /* font-size 16px предотвращает автозум на iOS */
-        .search-panel button#search-btn { width: 44px; height: 44px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; align-self: flex-end; }
-        
-        @media (max-width: 480px) {
-            .search-panel { min-width: 240px; }
-            .left-panel { top: 10px; left: 10px; }
-        }
+        /* Общие стили панелей (стеклянный эффект) */
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.2); }
+        button { outline: none; -webkit-tap-highlight-color: transparent; }
 
-        .map-label span { color: white; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1px black; font-family: Arial, sans-serif; white-space: nowrap; pointer-events: none; display: block; text-align: center; }
+        /* Контейнеры кнопок по краям экрана */
+        .map-controls { position: absolute; z-index: 1000; display: flex; gap: 10px; }
         
-        .running-route { animation: dash-animation 1s linear infinite; }
-        @keyframes dash-animation {
-            0% { stroke-dashoffset: 0; }
-            100% { stroke-dashoffset: 20; }
+        /* Левый верх (Поиск и Очистка) */
+        .top-left { top: 15px; left: 15px; flex-direction: column; }
+        
+        /* Правый край по центру (Зум) */
+        .right-center { right: 15px; top: 50%; transform: translateY(-50%); flex-direction: column; overflow: hidden; }
+        
+        /* Низ по центру (Этажи) */
+        .bottom-center { bottom: 25px; left: 50%; transform: translateX(-50%); flex-direction: row; padding: 6px; gap: 4px; }
+
+        /* Универсальная кнопка-иконка */
+        .ctrl-btn { width: 44px; height: 44px; background: transparent; border: none; color: #1e2937; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; }
+        
+        /* Группа кнопок (Зум) */
+        .btn-group .ctrl-btn { border-bottom: 1px solid #e2e8f0; }
+        .btn-group .ctrl-btn:last-child { border-bottom: none; }
+        .btn-group .ctrl-btn:active { background: #f1f5f9; }
+
+        /* Одиночные кнопки (Поиск) */
+        .single-btn { color: #2563eb; }
+        .single-btn#clear-route { color: #ef4444; display: none; } /* Скрыта пока нет маршрута */
+
+        /* Кнопки этажей */
+        .floor-btn { width: 44px; height: 44px; border: none; background: transparent; border-radius: 8px; font-size: 16px; font-weight: bold; color: #475569; cursor: pointer; }
+        .floor-btn.active { background: #2563eb; color: white; box-shadow: 0 2px 8px rgba(37,99,235,0.4); }
+
+        /* ВСПЛЫВАЮЩАЯ ПАНЕЛЬ ПОИСКА */
+        .search-overlay {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            width: calc(100% - 30px); max-width: 400px; z-index: 1001;
+            display: none; flex-direction: column; gap: 12px; padding: 16px; box-sizing: border-box;
         }
+        .search-overlay.active { display: flex; animation: slideDown 0.3s ease; }
+        @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+        .search-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: bold; color: #1e2937; font-size: 18px; }
+        .close-search { background: transparent; border: none; font-size: 24px; color: #64748b; padding: 0 5px; cursor: pointer; }
+
+        .form-row { display: flex; align-items: center; gap: 10px; }
+        .form-row label { font-weight: 600; color: #475569; width: 30px; }
+        .form-row input { flex: 1; padding: 12px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; outline: none; background: #f8fafc; }
+        .form-row input:focus { border-color: #2563eb; background: #fff; }
+        
+        .search-actions { margin-top: 5px; }
+        .btn-submit { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: bold; font-size: 16px; background: #2563eb; color: white; cursor: pointer; display: flex; justify-content: center; gap: 8px; }
+        .btn-submit:active { background: #1d4ed8; }
+
+        /* Элементы карты */
+        .map-label span { color: white; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1px black; font-family: Arial, sans-serif; white-space: nowrap; pointer-events: none; display: block; text-align: center; }
+        .running-route { animation: dash-animation 1s linear infinite; }
+        @keyframes dash-animation { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 20; } }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="left-panel">
-    <div id="ui-zoom" class="zoom-panel">
-        <button type="button" id="zoom-in" title="Приблизить"><i class="fas fa-plus"></i></button>
-        <button type="button" id="zoom-out" title="Отдалить"><i class="fas fa-minus"></i></button>
-        <button type="button" id="reset-view" title="Сбросить вид"><i class="fas fa-home"></i></button>
-        <button type="button" id="toggle-search" title="Поиск"><i class="fas fa-search"></i></button>
-        <button type="button" id="clear-route" title="Очистить маршрут"><i class="fas fa-times"></i></button>
-    </div>
-
-    <div id="floor-panel" class="zoom-panel">
-        <button type="button" class="floor-btn" data-floor="1">1</button>
-        <button type="button" class="floor-btn" data-floor="2">2</button>
-        <button type="button" class="floor-btn active" data-floor="3">3</button>
-        <button type="button" class="floor-btn" data-floor="4">4</button>
-    </div>
-
-    <!-- Заменили <div> на <form> для правильной работы мобильных клавиатур -->
-    <form id="search-panel" class="search-panel" onsubmit="event.preventDefault(); return false;">
-        <div class="form-row">
-            <label for="start-cabinet">От:</label>
-            <!-- Добавлен autocomplete="off" -->
-            <input type="text" id="start-cabinet" list="cabinet-list" placeholder="202" inputmode="text" autocomplete="off">
-        </div>
-        <div class="form-row">
-            <label for="end-cabinet">До:</label>
-            <!-- Добавлен autocomplete="off" -->
-            <input type="text" id="end-cabinet" list="cabinet-list" placeholder="261/14" inputmode="text" autocomplete="off">
-        </div>
-        <datalist id="cabinet-list"></datalist>
-        <!-- Тип изменен на submit -->
-        <button type="submit" id="search-btn"><i class="fas fa-route"></i></button>
-    </form>
+<!-- Левый верх: Поиск и Очистка -->
+<div class="map-controls top-left">
+    <button type="button" id="toggle-search" class="ctrl-btn single-btn glass-panel" title="Поиск"><i class="fas fa-search"></i></button>
+    <button type="button" id="clear-route" class="ctrl-btn single-btn glass-panel" title="Очистить маршрут"><i class="fas fa-times"></i></button>
 </div>
+
+<!-- Правый край: Зум -->
+<div class="map-controls right-center glass-panel btn-group">
+    <button type="button" id="zoom-in" class="ctrl-btn"><i class="fas fa-plus"></i></button>
+    <button type="button" id="zoom-out" class="ctrl-btn"><i class="fas fa-minus"></i></button>
+    <button type="button" id="reset-view" class="ctrl-btn"><i class="fas fa-home"></i></button>
+</div>
+
+<!-- Центр низ: Этажи -->
+<div class="map-controls bottom-center glass-panel">
+    <button type="button" class="floor-btn" data-floor="1">1</button>
+    <button type="button" class="floor-btn" data-floor="2">2</button>
+    <button type="button" class="floor-btn active" data-floor="3">3</button>
+    <button type="button" class="floor-btn" data-floor="4">4</button>
+</div>
+
+<!-- Модальное окно поиска -->
+<form id="search-panel" class="search-overlay glass-panel" onsubmit="event.preventDefault(); return false;">
+    <div class="search-header">
+        <span>Маршрут</span>
+        <button type="button" id="close-search" class="close-search"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="form-row">
+        <label for="start-cabinet">От:</label>
+        <input type="text" id="start-cabinet" list="cabinet-list" placeholder="202" inputmode="text" autocomplete="off">
+    </div>
+    <div class="form-row">
+        <label for="end-cabinet">До:</label>
+        <input type="text" id="end-cabinet" list="cabinet-list" placeholder="261/14" inputmode="text" autocomplete="off">
+    </div>
+    <div class="search-actions">
+        <button type="submit" id="search-btn" class="btn-submit"><i class="fas fa-route"></i> Найти</button>
+    </div>
+    <datalist id="cabinet-list"></datalist>
+</form>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/ngraph.graph@20.0.1/dist/ngraph.graph.min.js"></script>
 <script src="https://unpkg.com/ngraph.path@1.3.1/dist/ngraph.path.min.js"></script>
 
 <script>
-    const MAP_CONFIG = {
-        minZoom: -4,      
-        maxZoom: 0.5,     
-        defaultZoom: -4   
-    };
+    const MAP_CONFIG = { minZoom: -4, maxZoom: 0.5, defaultZoom: -4 };
 
     const map = L.map('map', {
-        crs: L.CRS.Simple,
-        zoomControl: false,
-        minZoom: MAP_CONFIG.minZoom, 
-        maxZoom: MAP_CONFIG.maxZoom,
-        zoomSnap: 0.1,
-        attributionControl: false
+        crs: L.CRS.Simple, zoomControl: false,
+        minZoom: MAP_CONFIG.minZoom, maxZoom: MAP_CONFIG.maxZoom,
+        zoomSnap: 0.1, attributionControl: false
     });
 
     let graph = createGraph();
@@ -114,7 +143,8 @@
     let currentRouteLayer = null;
     let markersLayer = L.layerGroup().addTo(map);
 
-    const uiElements = document.querySelectorAll('.left-panel');
+    // Блокируем клики по карте через интерфейс
+    const uiElements = document.querySelectorAll('.map-controls, .search-overlay');
     uiElements.forEach(el => {
         L.DomEvent.disableClickPropagation(el);
         L.DomEvent.disableScrollPropagation(el);
@@ -143,7 +173,7 @@
     async function initNavigation() {
         const floors =["1", "2", "3", "4"]; 
         for (let f of floors) {
-            try { await loadFloorData(f); } catch (e) { console.warn(`Данные для этажа ${f} отсутствуют`); }
+            try { await loadFloorData(f); } catch (e) { console.warn(`Данные этажа ${f} отсутствуют`); }
         }
 
         for (let id in transitions) {
@@ -173,7 +203,6 @@
     async function loadFloorData(floorNum) {
         const res = await fetch(`${floorNum}.json`);
         const data = await res.json();
-        
         const lw = data.width * (data.tilewidth || 32);
         const lh = data.height * (data.tileheight || 32);
         floorConfigs[floorNum] = { lw, lh, scaleX: 1, scaleY: 1 };
@@ -221,12 +250,10 @@
                         const name = cabinet || transId;
                         allCabinets.push({
                             name: String(name).trim(),
-                            floor: floorNum,
-                            rx: obj.x, ry: obj.y,
-                            nodeId: nid
+                            floor: floorNum, rx: obj.x, ry: obj.y, nodeId: nid
                         });
                         if (transId) {
-                            if (!transitions[transId]) transitions[transId] = [];
+                            if (!transitions[transId]) transitions[transId] =[];
                             transitions[transId].push({ nodeId: nid, floor: floorNum });
                         }
                     }
@@ -264,15 +291,9 @@
             markersLayer.clearLayers();
             fetch(`${floorNum}.json`).then(r => r.json()).then(data => loadLabels(data, floorNum));
             
-            if (fullRoute) {
-                drawPathOnCurrentFloor();
-            } else {
-                if (animate) {
-                    map.flyTo([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom, { duration: 1.5 });
-                } else {
-                    map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
-                }
-            }
+            if (fullRoute) drawPathOnCurrentFloor();
+            else if (animate) map.flyTo([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom, { duration: 1.5 });
+            else map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
         };
     }
 
@@ -305,39 +326,20 @@
                 L.circleMarker([conf.ph - (endNode.data.y * conf.scaleY), endNode.data.x * conf.scaleX], 
                 { radius: 6, color: 'red', fillOpacity: 1 })
                 .addTo(markersLayer)
-                .bindPopup(destinationName) 
-                .openPopup();
+                .bindPopup(destinationName).openPopup();
             }
-            
-            map.fitBounds(currentRouteLayer.getBounds(), { padding:[50, 50] });
+            map.fitBounds(currentRouteLayer.getBounds(), { padding: [50, 50] });
         }
 
         if (fullRoute) {
             const forwardRoute = [...fullRoute].reverse();
             for (let i = 0; i < forwardRoute.length - 1; i++) {
-                let currNode = forwardRoute[i];
-                let nextNode = forwardRoute[i+1];
-
+                let currNode = forwardRoute[i], nextNode = forwardRoute[i+1];
                 if (currNode.data.floor === currentFloor && nextNode.data.floor !== currentFloor) {
-                    let cFloorNum = parseInt(currentFloor);
-                    let nFloorNum = parseInt(nextNode.data.floor);
-                    let action = nFloorNum > cFloorNum ? "Поднимитесь" : "Спуститесь";
-                    let text = `${action} на ${nFloorNum} этаж`;
-
-                    let lat = conf.ph - (currNode.data.y * conf.scaleY);
-                    let lng = currNode.data.x * conf.scaleX;
-
-                    let markerHtml = `
-                        <div style="text-align:center; cursor:pointer; padding: 4px;" onclick="window.switchFloorFromPopup('${nextNode.data.floor}')">
-                            <span style="font-size: 13px; font-weight: bold; color: #1e2937;">${text}</span><br>
-                            <span style="color:#2563eb; text-decoration:underline; font-size: 11px;">Перейти на ${nextNode.data.floor} этаж</span>
-                        </div>
-                    `;
-
-                    L.circleMarker([lat, lng], { radius: 7, color: '#f59e0b', fillOpacity: 1, weight: 2 })
-                        .addTo(markersLayer)
-                        .bindPopup(markerHtml, { closeButton: false, autoClose: false })
-                        .openPopup();
+                    let text = `${nextNode.data.floor > currentFloor ? "Поднимитесь" : "Спуститесь"} на ${nextNode.data.floor} этаж`;
+                    let markerHtml = `<div style="text-align:center; cursor:pointer; padding: 4px;" onclick="window.switchFloorFromPopup('${nextNode.data.floor}')"><span style="font-size: 13px; font-weight: bold; color: #1e2937;">${text}</span><br><span style="color:#2563eb; text-decoration:underline; font-size: 11px;">Перейти на ${nextNode.data.floor} этаж</span></div>`;
+                    L.circleMarker([conf.ph - (currNode.data.y * conf.scaleY), currNode.data.x * conf.scaleX], { radius: 7, color: '#f59e0b', fillOpacity: 1, weight: 2 })
+                        .addTo(markersLayer).bindPopup(markerHtml, { closeButton: false, autoClose: false }).openPopup();
                 }
             }
         }
@@ -348,14 +350,8 @@
         if (!labelsLayer || !labelsLayer.objects) return;
         const conf = floorConfigs[floorNum];
         labelsLayer.objects.forEach(obj => {
-            const x = obj.x * conf.scaleX;
-            const y = conf.ph - (obj.y * conf.scaleY);
-            const icon = L.divIcon({
-                className: 'map-label',
-                html: `<span>${obj.name || ''}</span>`,
-                iconSize: [60, 15], iconAnchor: [30, 7]
-            });
-            L.marker([y, x], { icon, interactive: false }).addTo(markersLayer);
+            const icon = L.divIcon({ className: 'map-label', html: `<span>${obj.name || ''}</span>`, iconSize: [60, 15], iconAnchor: [30, 7] });
+            L.marker([conf.ph - (obj.y * conf.scaleY), obj.x * conf.scaleX], { icon, interactive: false }).addTo(markersLayer);
         });
     }
 
@@ -364,19 +360,14 @@
         document.getElementById('cabinet-list').innerHTML = names.map(n => `<option value="${n}">`).join('');
     }
 
-    // ИСПРАВЛЕНО: Слушаем событие 'submit' на форме, а не 'click' на кнопке
+    // Обработка формы
     document.getElementById('search-panel').addEventListener('submit', function(e) {
-        e.preventDefault(); // Это предотвращает перезагрузку страницы!
-        
-        // Скрываем клавиатуру на мобилках
-        document.activeElement.blur();
+        e.preventDefault(); 
+        document.activeElement.blur(); 
 
         const sVal = document.getElementById('start-cabinet').value.trim();
         const eVal = document.getElementById('end-cabinet').value.trim();
-        
-        if (!sVal || !eVal) {
-            return; // Если поля пустые, ничего не делаем
-        }
+        if (!sVal || !eVal) return; 
 
         const start = allCabinets.find(c => c.name === sVal);
         const end = allCabinets.find(c => c.name === eVal);
@@ -386,41 +377,41 @@
             if (path && path.length > 0) {
                 fullRoute = path;
                 destinationName = eVal;
+                
+                // СКРЫВАЕМ ПАНЕЛЬ И ПОКАЗЫВАЕМ КРЕСТИК
+                document.getElementById('search-panel').classList.remove('active');
+                document.getElementById('clear-route').style.display = 'flex';
+
                 if (start.floor !== currentFloor) {
                     const btn = document.querySelector(`.floor-btn[data-floor="${start.floor}"]`);
                     if (btn) btn.click();
-                } else {
-                    drawPathOnCurrentFloor();
-                }
-            } else {
-                alert("Путь не найден!");
-            }
-        } else {
-            alert("Кабинет не найден! Проверьте правильность ввода.");
-        }
+                } else drawPathOnCurrentFloor();
+            } else alert("Путь не найден!");
+        } else alert("Кабинет не найден!");
     });
 
+    // Открытие/Закрытие панели поиска
+    document.getElementById('toggle-search').onclick = () => document.getElementById('search-panel').classList.add('active');
+    document.getElementById('close-search').onclick = () => document.getElementById('search-panel').classList.remove('active');
+
+    // Базовые элементы
     document.getElementById('zoom-in').onclick = () => map.zoomIn();
     document.getElementById('zoom-out').onclick = () => map.zoomOut();
     document.getElementById('reset-view').onclick = () => switchFloor(currentFloor, true);
     
-    document.getElementById('toggle-search').onclick = () => {
-        const p = document.getElementById('search-panel');
-        p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
-    };
-
+    // Очистка маршрута
     document.getElementById('clear-route').onclick = () => {
-        fullRoute = null;
-        destinationName = "";
+        fullRoute = null; destinationName = "";
         document.getElementById('start-cabinet').value = '';
         document.getElementById('end-cabinet').value = '';
-        if (currentRouteLayer) {
-            map.removeLayer(currentRouteLayer);
-            currentRouteLayer = null;
-        }
+        if (currentRouteLayer) { map.removeLayer(currentRouteLayer); currentRouteLayer = null; }
+        
+        // ПРЯЧЕМ КРЕСТИК
+        document.getElementById('clear-route').style.display = 'none';
         switchFloor(currentFloor, false);
     };
 
+    // Переключение этажей
     document.querySelectorAll('.floor-btn').forEach(btn => {
         btn.onclick = function() {
             const f = this.getAttribute('data-floor');
@@ -434,9 +425,7 @@
     
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Service Worker зарегистрирован!'))
-                .catch(err => console.log('Ошибка SW:', err));
+            navigator.serviceWorker.register('./sw.js').catch(err => console.log('Ошибка SW:', err));
         });
     }
 </script>
