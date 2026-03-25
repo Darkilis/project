@@ -12,72 +12,87 @@
     <style>
         html, body, #map { height: 100dvh; margin: 0; padding: 0; overflow: hidden; background: #1e2937; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         .leaflet-container { background: #1e2937; }
+        
+        /* Общие стили панелей (стеклянный эффект) */
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.2); }
+        button { outline: none; -webkit-tap-highlight-color: transparent; }
 
-    /* Общие стили панелей (стеклянный эффект) */
-    .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.2); }
-    button { outline: none; -webkit-tap-highlight-color: transparent; }
+        /* Контейнеры кнопок по краям экрана */
+        .map-controls { position: absolute; z-index: 1000; display: flex; gap: 10px; }
+        
+        /* Левый верх (Поиск и Очистка) */
+        .top-left { top: 15px; left: 15px; flex-direction: column; }
+        
+        /* Правый край по центру (Зум) */
+        .right-center { right: 15px; top: 50%; transform: translateY(-50%); flex-direction: column; overflow: hidden; }
+        
+        /* Низ по центру (Этажи) */
+        .bottom-center { bottom: 25px; left: 50%; transform: translateX(-50%); flex-direction: row; padding: 6px; gap: 4px; }
 
-    /* Контейнеры кнопок по краям экрана */
-    .map-controls { position: absolute; z-index: 1000; display: flex; gap: 10px; }
-    
-    /* Левый верх (Поиск, Дом, Очистка) - теперь в одну строку (row) */
-    .top-left { top: 15px; left: 15px; flex-direction: row; }
-    
-    /* Низ по центру (Этажи) */
-    .bottom-center { bottom: 25px; left: 50%; transform: translateX(-50%); flex-direction: row; padding: 6px; gap: 4px; }
+        /* Универсальная кнопка-иконка */
+        .ctrl-btn { width: 44px; height: 44px; background: transparent; border: none; color: #1e2937; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; }
+        
+        /* Группа кнопок (Зум) */
+        .btn-group .ctrl-btn { border-bottom: 1px solid #e2e8f0; }
+        .btn-group .ctrl-btn:last-child { border-bottom: none; }
+        .btn-group .ctrl-btn:active { background: #f1f5f9; }
 
-    /* Универсальная кнопка-иконка */
-    .ctrl-btn { width: 44px; height: 44px; background: transparent; border: none; color: #1e2937; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; }
+        /* Одиночные кнопки (Поиск) */
+        .single-btn#toggle-search { background: #2563eb; color: white; border: none; }
+        .single-btn#clear-route { color: #ef4444; display: none; } /* Скрыта пока нет маршрута */
 
-    /* Одиночные кнопки (Очистка) */
-    .single-btn#clear-route { color: #ef4444; display: none; } /* Скрыта пока нет маршрута */
+        /* Кнопки этажей */
+        .floor-btn { width: 44px; height: 44px; border: none; background: transparent; border-radius: 8px; font-size: 16px; font-weight: bold; color: #475569; cursor: pointer; }
+        .floor-btn.active { background: #2563eb; color: white; box-shadow: 0 2px 8px rgba(37,99,235,0.4); }
 
-    /* Кнопки этажей */
-    .floor-btn { width: 44px; height: 44px; border: none; background: transparent; border-radius: 8px; font-size: 16px; font-weight: bold; color: #475569; cursor: pointer; }
-    .floor-btn.active { background: #2563eb; color: white; box-shadow: 0 2px 8px rgba(37,99,235,0.4); }
+        /* ВСПЛЫВАЮЩАЯ ПАНЕЛЬ ПОИСКА */
+        .search-overlay {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            width: calc(100% - 30px); max-width: 400px; z-index: 1001;
+            display: none; flex-direction: column; gap: 12px; padding: 16px; box-sizing: border-box;
+        }
+        .search-overlay.active { display: flex; animation: slideDown 0.3s ease; }
+        @keyframes slideDown { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-    /* ВСПЛЫВАЮЩАЯ ПАНЕЛЬ ПОИСКА - теперь под кнопками */
-    .search-overlay {
-        position: absolute; top: 70px; left: 15px; /* Смещена вниз под панель кнопок */
-        width: calc(100% - 30px); max-width: 400px; z-index: 1001;
-        display: none; flex-direction: column; gap: 12px; padding: 16px; box-sizing: border-box;
-    }
-    .search-overlay.active { display: flex; animation: slideDown 0.3s ease; }
-    @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .search-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: bold; color: #1e2937; font-size: 18px; }
+        .close-search { background: transparent; border: none; font-size: 24px; color: #64748b; padding: 0 5px; cursor: pointer; }
 
-    .search-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-weight: bold; color: #1e2937; font-size: 18px; }
-    .close-search { background: transparent; border: none; font-size: 24px; color: #64748b; padding: 0 5px; cursor: pointer; }
+        .form-row { display: flex; align-items: center; gap: 10px; }
+        .form-row label { font-weight: 600; color: #475569; width: 30px; }
+        .form-row input { flex: 1; padding: 12px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; outline: none; background: #f8fafc; }
+        .form-row input:focus { border-color: #2563eb; background: #fff; }
+        
+        .search-actions { margin-top: 5px; }
+        .btn-submit { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: bold; font-size: 16px; background: #2563eb; color: white; cursor: pointer; display: flex; justify-content: center; gap: 8px; }
+        .btn-submit:active { background: #1d4ed8; }
 
-    .form-row { display: flex; align-items: center; gap: 10px; }
-    .form-row label { font-weight: 600; color: #475569; width: 30px; }
-    .form-row input { flex: 1; padding: 12px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px; outline: none; background: #f8fafc; }
-    .form-row input:focus { border-color: #2563eb; background: #fff; }
-    
-    .search-actions { margin-top: 5px; }
-    .btn-submit { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: bold; font-size: 16px; background: #2563eb; color: white; cursor: pointer; display: flex; justify-content: center; gap: 8px; }
-    .btn-submit:active { background: #1d4ed8; }
-
-    /* Элементы карты */
-    .map-label span { color: white; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1px black; font-family: Arial, sans-serif; white-space: nowrap; pointer-events: none; display: block; text-align: center; }
-   
-   /* Оптимизированная анимация с GPU ускорением */
-   .running-route {
-        animation: dash-animation 1s linear infinite;
-        transform: translateZ(0); /* Включает GPU-ускорение */
-        will-change: stroke-dashoffset; /* Предупреждает браузер об анимации */
-    }
-    @keyframes dash-animation { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 20; } }
-</style>
+        /* Элементы карты */
+        .map-label span { color: white; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1px black; font-family: Arial, sans-serif; white-space: nowrap; pointer-events: none; display: block; text-align: center; }
+       
+       /* Оптимизированная анимация с GPU ускорением */
+       .running-route {
+            animation: dash-animation 1s linear infinite;
+            transform: translateZ(0); /* Включает GPU-ускорение */
+            will-change: stroke-dashoffset; /* Предупреждает браузер об анимации */
+        }
+        @keyframes dash-animation { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 20; } }
+    </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- Левый верх: Поиск, Домой и Очистка (все в одной строке) -->
+<!-- Левый верх: Поиск и Очистка -->
 <div class="map-controls top-left">
     <button type="button" id="toggle-search" class="ctrl-btn single-btn glass-panel" title="Поиск"><i class="fas fa-search"></i></button>
-    <button type="button" id="reset-view" class="ctrl-btn single-btn glass-panel" title="Домой"><i class="fas fa-home"></i></button>
     <button type="button" id="clear-route" class="ctrl-btn single-btn glass-panel" title="Очистить маршрут"><i class="fas fa-times"></i></button>
+</div>
+
+<!-- Правый край: Зум -->
+<div class="map-controls right-center glass-panel btn-group">
+    <button type="button" id="zoom-in" class="ctrl-btn"><i class="fas fa-plus"></i></button>
+    <button type="button" id="zoom-out" class="ctrl-btn"><i class="fas fa-minus"></i></button>
+    <button type="button" id="reset-view" class="ctrl-btn"><i class="fas fa-home"></i></button>
 </div>
 
 <!-- Центр низ: Этажи -->
@@ -109,9 +124,7 @@
 </form>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script src="https://unpkg.com/ngraph.graph@20.0.1/dist/ngraph.graph.min.js"></script>
-
 <script src="https://unpkg.com/ngraph.path@1.3.1/dist/ngraph.path.min.js"></script>
 
 <script>
@@ -398,7 +411,9 @@
     document.getElementById('toggle-search').onclick = () => document.getElementById('search-panel').classList.add('active');
     document.getElementById('close-search').onclick = () => document.getElementById('search-panel').classList.remove('active');
 
-    // Кнопка домой (центровка)
+    // Базовые элементы
+    document.getElementById('zoom-in').onclick = () => map.zoomIn();
+    document.getElementById('zoom-out').onclick = () => map.zoomOut();
     document.getElementById('reset-view').onclick = () => switchFloor(currentFloor, true);
     
     // Очистка маршрута
@@ -431,6 +446,5 @@
         });
     }
 </script>
-
 </body>
 </html>
