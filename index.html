@@ -20,31 +20,35 @@
     /* Контейнеры кнопок по краям экрана */
     .map-controls { position: absolute; z-index: 1000; display: flex; gap: 10px; }
     
-    /* Левый верх (Поиск, Дом, Очистка) в единой панели как этажи */
-    .top-left { top: 15px; left: 15px; flex-direction: row; padding: 6px; gap: 4px; }
+    /* Левый верх (Поиск, Дом, Сброс данных, Очистка) в единой панели */
+    .top-left { top: 15px; left: 15px; flex-direction: row; padding: 6px; gap: 6px; }
     
     /* Низ по центру (Этажи) */
-    .bottom-center { bottom: 25px; left: 50%; transform: translateX(-50%); flex-direction: row; padding: 6px; gap: 4px; }
+    .bottom-center { bottom: 25px; left: 50%; transform: translateX(-50%); flex-direction: row; padding: 6px; gap: 6px; }
 
-    /* Универсальный стиль кнопок внутри панелей (и для верхних, и для нижних) */
+    /* Универсальный стиль кнопок внутри панелей (квадратики со скошенными углами) */
     .panel-btn { 
-        width: 44px; height: 44px; border: none; background: transparent; 
-        border-radius: 8px; font-size: 18px; font-weight: bold; 
-        color: #1e2937; /* Темный (черный/серый) цвет иконки */
+        width: 44px; height: 44px; 
+        background: #ffffff; /* Белый фон */
+        border: 1.5px solid #cbd5e1; /* Видимая грань кнопки (квадратик) */
+        border-radius: 8px; /* Скошенные углы */
+        font-size: 18px; font-weight: bold; 
+        color: #1e2937; /* Темный (черный) цвет иконки */
         cursor: pointer; display: flex; align-items: center; justify-content: center; 
+        transition: all 0.2s ease;
     }
     
     /* Активное состояние для кнопок этажей */
-    .panel-btn.active { background: #2563eb; color: white; box-shadow: 0 2px 8px rgba(37,99,235,0.4); }
+    .panel-btn.active { background: #2563eb; color: white; border-color: #2563eb; box-shadow: 0 2px 8px rgba(37,99,235,0.4); }
     /* Эффект нажатия для верхних кнопок */
-    .top-btn:active { background: #e2e8f0; }
+    .top-btn:active { background: #f1f5f9; }
 
-    /* Кнопка сброса скрыта по умолчанию */
-    #clear-route { display: none; }
+    /* Кнопка сброса маршрута (крестик) скрыта по умолчанию */
+    #clear-route { display: none; color: #ef4444; border-color: #fca5a5; } 
 
-    /* ВСПЛЫВАЮЩАЯ ПАНЕЛЬ ПОИСКА - теперь под кнопками */
+    /* ВСПЛЫВАЮЩАЯ ПАНЕЛЬ ПОИСКА - под кнопками */
     .search-overlay {
-        position: absolute; top: 75px; left: 15px; /* Смещена вниз ровно под стеклянную панель */
+        position: absolute; top: 75px; left: 15px; 
         width: calc(100% - 30px); max-width: 400px; z-index: 1001;
         display: none; flex-direction: column; gap: 12px; padding: 16px; box-sizing: border-box;
     }
@@ -69,8 +73,8 @@
    /* Оптимизированная анимация с GPU ускорением */
    .running-route {
         animation: dash-animation 1s linear infinite;
-        transform: translateZ(0); /* Включает GPU-ускорение */
-        will-change: stroke-dashoffset; /* Предупреждает браузер об анимации */
+        transform: translateZ(0); 
+        will-change: stroke-dashoffset; 
     }
     @keyframes dash-animation { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 20; } }
 </style>
@@ -79,10 +83,11 @@
 
 <div id="map"></div>
 
-<!-- Левый верх: Поиск, Домой и Очистка (Единая панель, как у этажей) -->
+<!-- Левый верх: Поиск, Домой, Сброс данных и Очистка -->
 <div class="map-controls top-left glass-panel">
     <button type="button" id="toggle-search" class="panel-btn top-btn" title="Поиск"><i class="fas fa-search"></i></button>
     <button type="button" id="reset-view" class="panel-btn top-btn" title="Домой"><i class="fas fa-home"></i></button>
+    <button type="button" id="reset-data" class="panel-btn top-btn" title="Сброс данных"><i class="fas fa-sync-alt"></i></button>
     <button type="button" id="clear-route" class="panel-btn top-btn" title="Очистить маршрут"><i class="fas fa-times"></i></button>
 </div>
 
@@ -282,17 +287,15 @@
             conf.scaleX = this.width / conf.lw;
             conf.scaleY = this.height / conf.lh;
 
-            // --- ЖЕСТКАЯ ОЧИСТКА ПАМЯТИ ДЛЯ iOS ---
             if (currentImageLayer) {
                 const oldImgEl = currentImageLayer.getElement();
                 if (oldImgEl) {
-                    oldImgEl.src = ''; // Принудительно сбрасываем буфер картинки из памяти
-                    oldImgEl.remove(); // Вычищаем узел из DOM
+                    oldImgEl.src = ''; 
+                    oldImgEl.remove(); 
                 }
                 map.removeLayer(currentImageLayer);
                 currentImageLayer = null;
             }
-            // --------------------------------------
 
             const bounds = [[0, 0], [conf.ph, conf.pw]];
             currentImageLayer = L.imageOverlay(img.src, bounds).addTo(map);
@@ -388,7 +391,7 @@
                 fullRoute = path;
                 destinationName = eVal;
                 
-                // СКРЫВАЕМ ПАНЕЛЬ И ПОКАЗЫВАЕМ КНОПКУ СБРОСА
+                // СКРЫВАЕМ ПАНЕЛЬ И ПОКАЗЫВАЕМ КНОПКУ ОЧИСТКИ (КРЕСТИК)
                 document.getElementById('search-panel').classList.remove('active');
                 document.getElementById('clear-route').style.display = 'flex';
 
@@ -407,17 +410,30 @@
     // Кнопка домой (центровка карты)
     document.getElementById('reset-view').onclick = () => switchFloor(currentFloor, true);
     
-    // Сброс (Очистка) маршрута и данных
+    // Новая кнопка: Сброс данных (очистка кэша и перезагрузка)
+    document.getElementById('reset-data').onclick = () => {
+        if(confirm("Сбросить кэш и обновить данные этажей?")) {
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => caches.delete(name));
+                });
+            }
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.reload(true);
+        }
+    };
+
+    // Очистка маршрута (Скрытие пути и возврат к стандарту)
     document.getElementById('clear-route').onclick = () => {
         fullRoute = null; destinationName = "";
         document.getElementById('start-cabinet').value = '';
         document.getElementById('end-cabinet').value = '';
         if (currentRouteLayer) { map.removeLayer(currentRouteLayer); currentRouteLayer = null; }
         
-        // ПРЯЧЕМ КНОПКУ СБРОСА
+        // ПРЯЧЕМ КНОПКУ ОЧИСТКИ
         document.getElementById('clear-route').style.display = 'none';
         
-        // Возвращаем стандартный вид карты
         switchFloor(currentFloor, true);
     };
 
