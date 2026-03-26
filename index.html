@@ -31,6 +31,61 @@
         /* Анимация для маршрута */
         .running-route { animation: dash-animation 1s linear infinite; }
         @keyframes dash-animation { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 20; } }
+
+        /* ИЗМЕНЕНИЯ: Стили только для телефонов */
+        @media (max-width: 768px) {
+            /* 1. Смещение панели этажей вниз в центр */
+            #floor-panel {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                margin: 0;
+                z-index: 1000;
+            }
+
+            /* 2. Убираем + и - */
+            #zoom-in, #zoom-out {
+                display: none !important;
+            }
+
+            /* 3. Меняем порядок оставшихся кнопок (Поиск, Дом, Сброс) */
+            #toggle-search { order: 1; }
+            #reset-view { order: 2; }
+            #clear-route { order: 3; }
+
+            /* 4. Компактность интерфейса без ущерба для нажатий */
+            .left-panel {
+                top: 10px;
+                left: 10px;
+                right: 10px; /* Чтобы форма поиска не вылезала за пределы экрана */
+                gap: 10px;
+            }
+            .zoom-panel {
+                padding: 6px 10px;
+                gap: 6px;
+            }
+            .zoom-panel button {
+                /* Оставляем размер комфортным для пальца, но интерфейс будет меньше за счет отступов */
+                width: 36px; 
+                height: 36px;
+            }
+            .search-panel {
+                min-width: unset; /* Сбрасываем жесткую ширину */
+                width: 100%;
+                box-sizing: border-box;
+                padding: 10px 12px;
+                gap: 10px;
+            }
+            .search-panel input {
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+            .search-panel button#search-btn {
+                width: 38px;
+                height: 38px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -421,20 +476,6 @@
             switchFloor(f, false);
         };
     });
-
-    /*
-    // =========================================================================
-    // --- РЕГИСТРАЦИЯ SERVICE WORKER (ОФЛАЙН-РЕЖИМ) ---
-    // Раскомментируй этот блок, когда понадобится включить офлайн-режим
-    // =========================================================================
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Service Worker успешно зарегистрирован!', reg.scope))
-                .catch(err => console.error('Ошибка регистрации Service Worker:', err));
-        });
-    }
-    */
 
     initNavigation();
 </script>
