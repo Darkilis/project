@@ -150,8 +150,7 @@
     let transitions = {};
     let currentFloor = "3";
     let floorConfigs = {};
-    let floorJsonCache = {};
-    let imageCache = {}; 
+    let floorJsonCache = {}; 
 
     let currentImageLayer = null;
     let currentRouteLayer = null;
@@ -185,11 +184,6 @@
 
 async function initNavigation() {
     await loadFloorData(currentFloor);
-    
-    // ДОБАВЛЕНО: Сразу кэшируем текущий этаж
-    imageCache[currentFloor] = new Image();
-    imageCache[currentFloor].src = `${currentFloor}.png`;
-    
     switchFloor(currentFloor, false); 
 
     const floors = ["1", "2", "3", "4"];
@@ -197,9 +191,8 @@ async function initNavigation() {
         if (f !== currentFloor) {
             try { 
                 await loadFloorData(f); 
-                // ДОБАВЛЕНО: Предзагрузка картинок остальных этажей в фоне
-                imageCache[f] = new Image();
-                imageCache[f].src = `${f}.png`;
+                // ДОБАВЛЕНО: Легкая предзагрузка через fetch (скачивает в системный кэш, но не грузит RAM)
+                fetch(`${f}.webp`).catch(() => {}); // Если у вас .png, поменяйте на .png
             } catch (e) { console.warn(`Данные для этажа ${f} отсутствуют`); }
         }
     }
@@ -309,21 +302,16 @@ async function initNavigation() {
         return nid;
     }
 
-    async function switchFloor(floorNum, animate = true) {
+async function switchFloor(floorNum, animate = true) {
     currentFloor = floorNum;
     updateDatalist(); 
     
     const floorData = await loadFloorData(floorNum);
     
-    // ДОБАВЛЕНО: Берем картинку из кэша, либо создаем новую
-    let img = imageCache[floorNum];
-    if (!img) {
-        img = new Image();
-        img.src = `${floorNum}.webp`;
-        imageCache[floorNum] = img; // сохраняем на будущее
-    }
+    // Создаем временную картинку только для получения ширины и высоты
+    const img = new Image();
+    img.src = `${floorNum}.webp`; // Укажите .png, если используете PNG
 
-    // ДОБАВЛЕНО: Логика отрисовки вынесена в отдельную функцию
     const renderMapOverlay = () => {
         const conf = floorConfigs[floorNum];
         conf.pw = img.width; 
@@ -331,7 +319,17 @@ async function initNavigation() {
         conf.scaleX = img.width / conf.lw;
         conf.scaleY = img.height / conf.lh;
 
-        if (currentImageLayer) map.removeLayer(currentImageLayer);
+        // ЖЕСТКАЯ ОЧИСТКА ПАМЯТИ ДЛЯ iPHONE
+        if (currentImageLayer) {
+            map.removeLayer(currentImageLayer);
+            currentImageLayer.remove(); // Принудительно удаляем элемент из DOM
+            currentImageLayer = null;
+        }
+        if (currentRouteLayer) {
+            map.removeLayer(currentRouteLayer);
+            currentRouteLayer = null;
+        }
+        
         const bounds = [[0, 0], [conf.ph, conf.pw]];
         currentImageLayer = L.imageOverlay(img.src, bounds).addTo(map);
         map.setMaxBounds(bounds);
@@ -348,13 +346,14 @@ async function initNavigation() {
                 map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
             }
         }
+        
+        // Удаляем ссылку на временную картинку, чтобы сборщик мусора очистил RAM
+        img.onload = null;
     };
 
-    // ДОБАВЛЕНО: Если картинка УЖЕ загрузилась в фоне - рисуем мгновенно
     if (img.complete && img.naturalWidth !== 0) {
         renderMapOverlay();
     } else {
-        // Если картинка еще качается - ждем загрузки
         img.onload = renderMapOverlay;
     }
 }
@@ -461,7 +460,14 @@ document.getElementById('search-btn').onclick = () => {
         const start = allCabinets.find(c => c.name === sVal);
         const end = allCabinets.find(c => c.name === eVal);
 
+        // ДОБАВЛЕНО: Очищаем старый маршрут перед постройкой нового
+        if (currentRouteLayer) {
+            map.removeLayer(currentRouteLayer);
+            currentRouteLayer = null;
+        }
+
         if (start && end) {
+            // ... остальной код поиска без изменений
             const path = pathFinder.find(start.nodeId, end.nodeId);
             if (path && path.length > 0) {
                 fullRoute = path;
