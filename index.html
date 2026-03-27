@@ -455,7 +455,7 @@ async function initNavigation() {
         startList.innerHTML = floorNames.map(n => `<option value="${n}">`).join('');
     }
 
-    document.getElementById('search-btn').onclick = () => {
+document.getElementById('search-btn').onclick = () => {
         const sVal = document.getElementById('start-cabinet').value.trim();
         const eVal = document.getElementById('end-cabinet').value.trim();
         const start = allCabinets.find(c => c.name === sVal);
@@ -466,6 +466,13 @@ async function initNavigation() {
             if (path && path.length > 0) {
                 fullRoute = path;
                 destinationName = eVal;
+                
+                // --- ДОБАВЛЕНО: Сворачиваем панель поиска только на телефонах ---
+                if (window.innerWidth <= 768) {
+                    document.getElementById('search-panel').style.display = 'none';
+                }
+                // ---------------------------------------------------------------
+
                 if (start.floor !== currentFloor) {
                     const btn = document.querySelector(`.floor-btn[data-floor="${start.floor}"]`);
                     if (btn) btn.click();
