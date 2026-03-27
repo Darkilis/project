@@ -139,7 +139,7 @@
         maxZoom: MAP_CONFIG.maxZoom,
         zoomSnap: 0.1,
         attributionControl: false,
-        preferCanvas: true
+        preferCanvas: false
     });
 
     let graph = createGraph();
@@ -187,13 +187,13 @@ async function initNavigation() {
     await loadFloorData(currentFloor);
     switchFloor(currentFloor, false); 
 
-    const floors = ["1", "2", "3", "4"];
+    const floors =["1", "2", "3", "4"];
     for (let f of floors) {
         if (f !== currentFloor) {
             try { 
                 await loadFloorData(f); 
-                // ДОБАВЛЕНО: Легкая предзагрузка через fetch (скачивает в системный кэш, но не грузит RAM)
-                fetch(`${f}.webp`).catch(() => {}); // Если у вас .png, поменяйте на .png
+                // СТРОКУ НИЖЕ НУЖНО УДАЛИТЬ:
+                // fetch(`${f}.webp`).catch(() => {}); 
             } catch (e) { console.warn(`Данные для этажа ${f} отсутствуют`); }
         }
     }
