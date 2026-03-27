@@ -138,7 +138,8 @@
         minZoom: MAP_CONFIG.minZoom,
         maxZoom: MAP_CONFIG.maxZoom,
         zoomSnap: 0.1,
-        attributionControl: false
+        attributionControl: false,
+        preferCanvas: true
     });
 
     let graph = createGraph();
@@ -149,7 +150,8 @@
     let transitions = {};
     let currentFloor = "3";
     let floorConfigs = {};
-    let floorJsonCache = {}; 
+    let floorJsonCache = {};
+    let imageCache = {}; 
 
     let currentImageLayer = null;
     let currentRouteLayer = null;
@@ -181,39 +183,49 @@
         return null;
     }
 
-    async function initNavigation() {
-        await loadFloorData(currentFloor);
-        switchFloor(currentFloor, false); 
+async function initNavigation() {
+    await loadFloorData(currentFloor);
+    
+    // ДОБАВЛЕНО: Сразу кэшируем текущий этаж
+    imageCache[currentFloor] = new Image();
+    imageCache[currentFloor].src = `${currentFloor}.png`;
+    
+    switchFloor(currentFloor, false); 
 
-        const floors = ["1", "2", "3", "4"];
-        for (let f of floors) {
-            if (f !== currentFloor) {
-                try { await loadFloorData(f); } catch (e) { console.warn(`Данные для этажа ${f} отсутствуют`); }
-            }
+    const floors = ["1", "2", "3", "4"];
+    for (let f of floors) {
+        if (f !== currentFloor) {
+            try { 
+                await loadFloorData(f); 
+                // ДОБАВЛЕНО: Предзагрузка картинок остальных этажей в фоне
+                imageCache[f] = new Image();
+                imageCache[f].src = `${f}.png`;
+            } catch (e) { console.warn(`Данные для этажа ${f} отсутствуют`); }
         }
+    }
 
-        for (let id in transitions) {
-            let pts = transitions[id];
-            if (pts.length > 1) {
-                for (let i = 0; i < pts.length; i++) {
-                    for (let j = i + 1; j < pts.length; j++) {
-                        graph.addLink(pts[i].nodeId, pts[j].nodeId, { weight: 10000 });
-                        graph.addLink(pts[j].nodeId, pts[i].nodeId, { weight: 10000 });
-                    }
+    for (let id in transitions) {
+        let pts = transitions[id];
+        if (pts.length > 1) {
+            for (let i = 0; i < pts.length; i++) {
+                for (let j = i + 1; j < pts.length; j++) {
+                    graph.addLink(pts[i].nodeId, pts[j].nodeId, { weight: 10000 });
+                    graph.addLink(pts[j].nodeId, pts[i].nodeId, { weight: 10000 });
                 }
             }
         }
-
-        pathFinder = ngraphPath.aStar(graph, {
-            distance(a, b, link) { return link.data.weight || 1; },
-            heuristic(a, b) {
-                const floorPenalty = a.data.floor !== b.data.floor ? 20000 : 0;
-                return Math.hypot(a.data.x - b.data.x, a.data.y - b.data.y) + floorPenalty;
-            }
-        });
-
-        updateDatalist();
     }
+
+    pathFinder = ngraphPath.aStar(graph, {
+        distance(a, b, link) { return link.data.weight || 1; },
+        heuristic(a, b) {
+            const floorPenalty = a.data.floor !== b.data.floor ? 20000 : 0;
+            return Math.hypot(a.data.x - b.data.x, a.data.y - b.data.y) + floorPenalty;
+        }
+    });
+
+    updateDatalist();
+}
 
     async function loadFloorData(floorNum) {
         if (floorJsonCache[floorNum]) return floorJsonCache[floorNum];
@@ -298,38 +310,54 @@
     }
 
     async function switchFloor(floorNum, animate = true) {
-        currentFloor = floorNum;
-        updateDatalist(); 
-        
-        const floorData = await loadFloorData(floorNum);
-        
-        const img = new Image();
+    currentFloor = floorNum;
+    updateDatalist(); 
+    
+    const floorData = await loadFloorData(floorNum);
+    
+    // ДОБАВЛЕНО: Берем картинку из кэша, либо создаем новую
+    let img = imageCache[floorNum];
+    if (!img) {
+        img = new Image();
         img.src = `${floorNum}.png`;
-        img.onload = function() {
-            const conf = floorConfigs[floorNum];
-            conf.pw = this.width; conf.ph = this.height;
-            conf.scaleX = this.width / conf.lw;
-            conf.scaleY = this.height / conf.lh;
-
-            if (currentImageLayer) map.removeLayer(currentImageLayer);
-            const bounds = [[0, 0], [conf.ph, conf.pw]];
-            currentImageLayer = L.imageOverlay(img.src, bounds).addTo(map);
-            map.setMaxBounds(bounds);
-            markersLayer.clearLayers();
-            
-            loadLabels(floorData, floorNum);
-            
-            if (fullRoute) {
-                drawPathOnCurrentFloor();
-            } else {
-                if (animate) {
-                    map.flyTo([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom, { duration: 1.5 });
-                } else {
-                    map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
-                }
-            }
-        };
+        imageCache[floorNum] = img; // сохраняем на будущее
     }
+
+    // ДОБАВЛЕНО: Логика отрисовки вынесена в отдельную функцию
+    const renderMapOverlay = () => {
+        const conf = floorConfigs[floorNum];
+        conf.pw = img.width; 
+        conf.ph = img.height;
+        conf.scaleX = img.width / conf.lw;
+        conf.scaleY = img.height / conf.lh;
+
+        if (currentImageLayer) map.removeLayer(currentImageLayer);
+        const bounds = [[0, 0], [conf.ph, conf.pw]];
+        currentImageLayer = L.imageOverlay(img.src, bounds).addTo(map);
+        map.setMaxBounds(bounds);
+        markersLayer.clearLayers();
+        
+        loadLabels(floorData, floorNum);
+        
+        if (fullRoute) {
+            drawPathOnCurrentFloor();
+        } else {
+            if (animate) {
+                map.flyTo([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom, { duration: 1.5 });
+            } else {
+                map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
+            }
+        }
+    };
+
+    // ДОБАВЛЕНО: Если картинка УЖЕ загрузилась в фоне - рисуем мгновенно
+    if (img.complete && img.naturalWidth !== 0) {
+        renderMapOverlay();
+    } else {
+        // Если картинка еще качается - ждем загрузки
+        img.onload = renderMapOverlay;
+    }
+}
 
     window.switchFloorFromPopup = function(floor) {
         const btn = document.querySelector(`.floor-btn[data-floor="${floor}"]`);
