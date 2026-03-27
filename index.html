@@ -191,8 +191,8 @@ async function initNavigation() {
         if (f !== currentFloor) {
             try { 
                 await loadFloorData(f); 
-                // УДАЛЕНО: fetch(`${f}.webp`). Это вызывало переполнение памяти на iOS!
-                // На телефонах мы грузим картинку только тогда, когда пользователь перешел на этаж.
+                // ДОБАВЛЕНО: Легкая предзагрузка через fetch (скачивает в системный кэш, но не грузит RAM)
+                fetch(`${f}.webp`).catch(() => {}); // Если у вас .png, поменяйте на .png
             } catch (e) { console.warn(`Данные для этажа ${f} отсутствуют`); }
         }
     }
@@ -302,16 +302,21 @@ async function initNavigation() {
         return nid;
     }
 
-async function switchFloor(floorNum, animate = true) {
+    async function switchFloor(floorNum, animate = true) {
     currentFloor = floorNum;
     updateDatalist(); 
     
     const floorData = await loadFloorData(floorNum);
     
-    // Создаем временную картинку только для получения ширины и высоты
-    const img = new Image();
-    img.src = `${floorNum}.webp`; // Укажите .png, если используете PNG
+    // ДОБАВЛЕНО: Берем картинку из кэша, либо создаем новую
+    let img = imageCache[floorNum];
+    if (!img) {
+        img = new Image();
+        img.src = `${floorNum}.webp`;
+        imageCache[floorNum] = img; // сохраняем на будущее
+    }
 
+    // ДОБАВЛЕНО: Логика отрисовки вынесена в отдельную функцию
     const renderMapOverlay = () => {
         const conf = floorConfigs[floorNum];
         conf.pw = img.width; 
@@ -319,17 +324,7 @@ async function switchFloor(floorNum, animate = true) {
         conf.scaleX = img.width / conf.lw;
         conf.scaleY = img.height / conf.lh;
 
-        // ЖЕСТКАЯ ОЧИСТКА ПАМЯТИ ДЛЯ iPHONE
-        if (currentImageLayer) {
-            map.removeLayer(currentImageLayer);
-            currentImageLayer.remove(); // Принудительно удаляем элемент из DOM
-            currentImageLayer = null;
-        }
-        if (currentRouteLayer) {
-            map.removeLayer(currentRouteLayer);
-            currentRouteLayer = null;
-        }
-        
+        if (currentImageLayer) map.removeLayer(currentImageLayer);
         const bounds = [[0, 0], [conf.ph, conf.pw]];
         currentImageLayer = L.imageOverlay(img.src, bounds).addTo(map);
         map.setMaxBounds(bounds);
@@ -346,14 +341,13 @@ async function switchFloor(floorNum, animate = true) {
                 map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
             }
         }
-        
-        // Удаляем ссылку на временную картинку, чтобы сборщик мусора очистил RAM
-        img.onload = null;
     };
 
+    // ДОБАВЛЕНО: Если картинка УЖЕ загрузилась в фоне - рисуем мгновенно
     if (img.complete && img.naturalWidth !== 0) {
         renderMapOverlay();
     } else {
+        // Если картинка еще качается - ждем загрузки
         img.onload = renderMapOverlay;
     }
 }
