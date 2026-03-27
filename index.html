@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Карта этажа — Навигатор</title>
     
+    <!-- ДОБАВЛЕНО: Подключение манифеста и поддержка PWA (Android и iOS) -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,21 +28,63 @@
         .search-panel input { flex: 1; padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 15px; outline: none; }
         .search-panel button#search-btn { width: 42px; height: 42px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; align-self: flex-end; }
         .map-label span { color: white; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1px black; font-family: Arial, sans-serif; white-space: nowrap; pointer-events: none; display: block; text-align: center; }
+        /* Анимация для маршрута */
         .running-route { animation: dash-animation 1s linear infinite; }
         @keyframes dash-animation { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 20; } }
 
+        /* ИЗМЕНЕНИЯ: Стили только для телефонов */
         @media (max-width: 768px) {
-            #floor-panel { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); margin: 0; z-index: 1000; }
-            #zoom-in, #zoom-out { display: none !important; }
+            /* 1. Смещение панели этажей вниз в центр */
+            #floor-panel {
+                position: fixed;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                margin: 0;
+                z-index: 1000;
+            }
+
+            /* 2. Убираем + и - */
+            #zoom-in, #zoom-out {
+                display: none !important;
+            }
+
+            /* 3. Меняем порядок оставшихся кнопок (Поиск, Дом, Сброс) */
             #toggle-search { order: 1; }
             #reset-view { order: 2; }
             #clear-route { order: 3; }
-            .left-panel { top: 10px; left: 10px; right: 10px; gap: 10px; }
-            .zoom-panel { padding: 6px 10px; gap: 6px; }
-            .zoom-panel button { width: 36px; height: 36px; }
-            .search-panel { min-width: unset; width: 100%; box-sizing: border-box; padding: 10px 12px; gap: 10px; }
-            .search-panel input { padding: 8px 12px; font-size: 14px; }
-            .search-panel button#search-btn { width: 38px; height: 38px; }
+
+            /* 4. Компактность интерфейса без ущерба для нажатий */
+            .left-panel {
+                top: 10px;
+                left: 10px;
+                right: 10px; /* Чтобы форма поиска не вылезала за пределы экрана */
+                gap: 10px;
+            }
+            .zoom-panel {
+                padding: 6px 10px;
+                gap: 6px;
+            }
+            .zoom-panel button {
+                /* Оставляем размер комфортным для пальца, но интерфейс будет меньше за счет отступов */
+                width: 36px; 
+                height: 36px;
+            }
+            .search-panel {
+                min-width: unset; /* Сбрасываем жесткую ширину */
+                width: 100%;
+                box-sizing: border-box;
+                padding: 10px 12px;
+                gap: 10px;
+            }
+            .search-panel input {
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+            .search-panel button#search-btn {
+                width: 38px;
+                height: 38px;
+            }
         }
     </style>
 </head>
@@ -74,6 +117,7 @@
             <label for="end-cabinet">До:</label>
             <input type="text" id="end-cabinet" list="end-cabinet-list" placeholder="Например: 261/14">
         </div>
+        <!-- Раздельные списки -->
         <datalist id="start-cabinet-list"></datalist>
         <datalist id="end-cabinet-list"></datalist>
         <button id="search-btn"><i class="fas fa-route"></i></button>
@@ -85,16 +129,17 @@
 <script src="https://unpkg.com/ngraph.path@1.3.1/dist/ngraph.path.min.js"></script>
 
 <script>
+    // --- НАСТРОЙКИ ЗУМА ---
     const MAP_CONFIG = { minZoom: -4, maxZoom: 0.5, defaultZoom: -4 };
 
-    // Убрали preferCanvas: true. iOS не любит огромные Canvas-элементы.
     const map = L.map('map', {
         crs: L.CRS.Simple,
         zoomControl: false,
         minZoom: MAP_CONFIG.minZoom,
         maxZoom: MAP_CONFIG.maxZoom,
         zoomSnap: 0.1,
-        attributionControl: false
+        attributionControl: false,
+        preferCanvas: true
     });
 
     let graph = createGraph();
@@ -137,45 +182,50 @@
         return null;
     }
 
-    async function initNavigation() {
-        await loadFloorData(currentFloor);
-        switchFloor(currentFloor, false); 
+async function initNavigation() {
+    await loadFloorData(currentFloor);
+    switchFloor(currentFloor, false); 
 
-        const floors = ["1", "2", "3", "4"];
-        for (let f of floors) {
-            if (f !== currentFloor) {
-                try { await loadFloorData(f); } catch (e) {}
-            }
+    const floors = ["1", "2", "3", "4"];
+    for (let f of floors) {
+        if (f !== currentFloor) {
+            try { 
+                await loadFloorData(f); 
+                // ДОБАВЛЕНО: Легкая предзагрузка через fetch (скачивает в системный кэш, но не грузит RAM)
+                fetch(`${f}.webp`).catch(() => {}); // Если у вас .png, поменяйте на .png
+            } catch (e) { console.warn(`Данные для этажа ${f} отсутствуют`); }
         }
+    }
 
-        for (let id in transitions) {
-            let pts = transitions[id];
-            if (pts.length > 1) {
-                for (let i = 0; i < pts.length; i++) {
-                    for (let j = i + 1; j < pts.length; j++) {
-                        graph.addLink(pts[i].nodeId, pts[j].nodeId, { weight: 10000 });
-                        graph.addLink(pts[j].nodeId, pts[i].nodeId, { weight: 10000 });
-                    }
+    for (let id in transitions) {
+        let pts = transitions[id];
+        if (pts.length > 1) {
+            for (let i = 0; i < pts.length; i++) {
+                for (let j = i + 1; j < pts.length; j++) {
+                    graph.addLink(pts[i].nodeId, pts[j].nodeId, { weight: 10000 });
+                    graph.addLink(pts[j].nodeId, pts[i].nodeId, { weight: 10000 });
                 }
             }
         }
-
-        pathFinder = ngraphPath.aStar(graph, {
-            distance(a, b, link) { return link.data.weight || 1; },
-            heuristic(a, b) {
-                const floorPenalty = a.data.floor !== b.data.floor ? 20000 : 0;
-                return Math.hypot(a.data.x - b.data.x, a.data.y - b.data.y) + floorPenalty;
-            }
-        });
-
-        updateDatalist();
     }
+
+    pathFinder = ngraphPath.aStar(graph, {
+        distance(a, b, link) { return link.data.weight || 1; },
+        heuristic(a, b) {
+            const floorPenalty = a.data.floor !== b.data.floor ? 20000 : 0;
+            return Math.hypot(a.data.x - b.data.x, a.data.y - b.data.y) + floorPenalty;
+        }
+    });
+
+    updateDatalist();
+}
 
     async function loadFloorData(floorNum) {
         if (floorJsonCache[floorNum]) return floorJsonCache[floorNum];
 
         const res = await fetch(`${floorNum}.json`);
         const data = await res.json();
+        
         floorJsonCache[floorNum] = data; 
         
         const lw = data.width * (data.tilewidth || 32);
@@ -252,57 +302,61 @@
         return nid;
     }
 
-    // ПОЛНОСТЬЮ ИЗМЕНЕННАЯ ФУНКЦИЯ ДЛЯ БОРЬБЫ С УТЕЧКОЙ ПАМЯТИ НА iOS
-    async function switchFloor(floorNum, animate = true) {
-        currentFloor = floorNum;
-        updateDatalist(); 
-        
-        const floorData = await loadFloorData(floorNum);
-        
-        // 1. ЖЕСТКО ЧИСТИМ ПАМЯТЬ СТАРОГО ЭТАЖА
+async function switchFloor(floorNum, animate = true) {
+    currentFloor = floorNum;
+    updateDatalist(); 
+    
+    const floorData = await loadFloorData(floorNum);
+    
+    // Создаем временную картинку только для получения ширины и высоты
+    const img = new Image();
+    img.src = `${floorNum}.webp`; // Укажите .png, если используете PNG
+
+    const renderMapOverlay = () => {
+        const conf = floorConfigs[floorNum];
+        conf.pw = img.width; 
+        conf.ph = img.height;
+        conf.scaleX = img.width / conf.lw;
+        conf.scaleY = img.height / conf.lh;
+
+        // ЖЕСТКАЯ ОЧИСТКА ПАМЯТИ ДЛЯ iPHONE
         if (currentImageLayer) {
             map.removeLayer(currentImageLayer);
-            if (currentImageLayer.getElement()) {
-                currentImageLayer.getElement().remove();
-            }
+            currentImageLayer.remove(); // Принудительно удаляем элемент из DOM
             currentImageLayer = null;
         }
         if (currentRouteLayer) {
             map.removeLayer(currentRouteLayer);
             currentRouteLayer = null;
         }
+        
+        const bounds = [[0, 0], [conf.ph, conf.pw]];
+        currentImageLayer = L.imageOverlay(img.src, bounds).addTo(map);
+        map.setMaxBounds(bounds);
         markersLayer.clearLayers();
+        
+        loadLabels(floorData, floorNum);
+        
+        if (fullRoute) {
+            drawPathOnCurrentFloor();
+        } else {
+            if (animate) {
+                map.flyTo([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom, { duration: 1.5 });
+            } else {
+                map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
+            }
+        }
+        
+        // Удаляем ссылку на временную картинку, чтобы сборщик мусора очистил RAM
+        img.onload = null;
+    };
 
-        // 2. МИКРО-ПАУЗА (50мс), чтобы iOS успел освободить RAM старой картинки
-        setTimeout(() => {
-            const img = new Image();
-            img.onload = function() {
-                const conf = floorConfigs[floorNum];
-                conf.pw = this.naturalWidth || this.width; 
-                conf.ph = this.naturalHeight || this.height;
-                conf.scaleX = conf.pw / conf.lw;
-                conf.scaleY = conf.ph / conf.lh;
-
-                const bounds = [[0, 0], [conf.ph, conf.pw]];
-                
-                // Передаем сам объект `img`, а не ссылку, чтобы избежать двойной загрузки в память
-                currentImageLayer = L.imageOverlay(this, bounds).addTo(map);
-                map.setMaxBounds(bounds);
-                
-                loadLabels(floorData, floorNum);
-                
-                if (fullRoute) {
-                    drawPathOnCurrentFloor();
-                } else {
-                    if (animate) map.flyTo([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom, { duration: 1.5 });
-                    else map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
-                }
-
-                this.onload = null; // Очищаем ссылку для сборщика мусора
-            };
-            img.src = `${floorNum}.webp`;
-        }, 50);
+    if (img.complete && img.naturalWidth !== 0) {
+        renderMapOverlay();
+    } else {
+        img.onload = renderMapOverlay;
     }
+}
 
     window.switchFloorFromPopup = function(floor) {
         const btn = document.querySelector(`.floor-btn[data-floor="${floor}"]`);
@@ -389,6 +443,7 @@
         if (!endList || !startList) return;
 
         const validCabinets = allCabinets.filter(c => /^\d/.test(c.name));
+
         const allNames = [...new Set(validCabinets.map(c => c.name))]
             .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
         endList.innerHTML = allNames.map(n => `<option value="${n}">`).join('');
@@ -399,16 +454,11 @@
         startList.innerHTML = floorNames.map(n => `<option value="${n}">`).join('');
     }
 
-    document.getElementById('search-btn').onclick = () => {
+document.getElementById('search-btn').onclick = () => {
         const sVal = document.getElementById('start-cabinet').value.trim();
         const eVal = document.getElementById('end-cabinet').value.trim();
         const start = allCabinets.find(c => c.name === sVal);
         const end = allCabinets.find(c => c.name === eVal);
-
-        if (currentRouteLayer) {
-            map.removeLayer(currentRouteLayer);
-            currentRouteLayer = null;
-        }
 
         if (start && end) {
             const path = pathFinder.find(start.nodeId, end.nodeId);
@@ -416,9 +466,11 @@
                 fullRoute = path;
                 destinationName = eVal;
                 
+                // --- ДОБАВЛЕНО: Сворачиваем панель поиска только на телефонах ---
                 if (window.innerWidth <= 768) {
                     document.getElementById('search-panel').style.display = 'none';
                 }
+                // ---------------------------------------------------------------
 
                 if (start.floor !== currentFloor) {
                     const btn = document.querySelector(`.floor-btn[data-floor="${start.floor}"]`);
@@ -453,7 +505,6 @@
     document.querySelectorAll('.floor-btn').forEach(btn => {
         btn.onclick = function() {
             const f = this.getAttribute('data-floor');
-            if (f === currentFloor) return; // Игнорируем нажатие, если мы уже на этом этаже
             document.querySelectorAll('.floor-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             switchFloor(f, false);
