@@ -303,21 +303,15 @@ async function initNavigation() {
         return nid;
     }
 
-    async function switchFloor(floorNum, animate = true) {
+   async function switchFloor(floorNum, animate = true) {
     currentFloor = floorNum;
     updateDatalist(); 
     
     const floorData = await loadFloorData(floorNum);
     
-    // ДОБАВЛЕНО: Берем картинку из кэша, либо создаем новую
-    let img = imageCache[floorNum];
-    if (!img) {
-        img = new Image();
-        img.src = `${floorNum}.webp`;
-        imageCache[floorNum] = img; // сохраняем на будущее
-    }
-
-    // ДОБАВЛЕНО: Логика отрисовки вынесена в отдельную функцию
+    // УБРАНО: imageCache. Создаем изображение локально, чтобы оно выгружалось из памяти
+    const img = new Image();
+    
     const renderMapOverlay = () => {
         const conf = floorConfigs[floorNum];
         conf.pw = img.width; 
@@ -344,13 +338,8 @@ async function initNavigation() {
         }
     };
 
-    // ДОБАВЛЕНО: Если картинка УЖЕ загрузилась в фоне - рисуем мгновенно
-    if (img.complete && img.naturalWidth !== 0) {
-        renderMapOverlay();
-    } else {
-        // Если картинка еще качается - ждем загрузки
-        img.onload = renderMapOverlay;
-    }
+    img.onload = renderMapOverlay;
+    img.src = `${floorNum}.webp`; // Запускаем загрузку
 }
 
     window.switchFloorFromPopup = function(floor) {
