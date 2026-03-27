@@ -307,20 +307,22 @@ async function switchFloor(floorNum, animate = true) {
     updateDatalist(); 
     
     const floorData = await loadFloorData(floorNum);
-    const conf = floorConfigs[floorNum];
-    const imgSrc = `${floorNum}.webp`;
+    
+    // Создаем временную картинку только для получения ширины и высоты
+    const img = new Image();
+    img.src = `${floorNum}.webp`; // Укажите .png, если используете PNG
 
-    // Функция отрисовки карты
     const renderMapOverlay = () => {
-        // МЯГКАЯ ОЧИСТКА ПАМЯТИ ДЛЯ iPHONE
+        const conf = floorConfigs[floorNum];
+        conf.pw = img.width; 
+        conf.ph = img.height;
+        conf.scaleX = img.width / conf.lw;
+        conf.scaleY = img.height / conf.lh;
+
+        // ЖЕСТКАЯ ОЧИСТКА ПАМЯТИ ДЛЯ iPHONE
         if (currentImageLayer) {
-            const imgElement = currentImageLayer.getElement();
-            if (imgElement) {
-                // БЕЗОПАСНЫЙ СПОСОБ: вместо '', ставим пустой 1x1 пиксель
-                // Это заставляет iOS освободить память без краша WebKit
-                imgElement.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-            }
             map.removeLayer(currentImageLayer);
+            currentImageLayer.remove(); // Принудительно удаляем элемент из DOM
             currentImageLayer = null;
         }
         if (currentRouteLayer) {
@@ -329,7 +331,7 @@ async function switchFloor(floorNum, animate = true) {
         }
         
         const bounds = [[0, 0], [conf.ph, conf.pw]];
-        currentImageLayer = L.imageOverlay(imgSrc, bounds).addTo(map);
+        currentImageLayer = L.imageOverlay(img.src, bounds).addTo(map);
         map.setMaxBounds(bounds);
         markersLayer.clearLayers();
         
@@ -344,30 +346,15 @@ async function switchFloor(floorNum, animate = true) {
                 map.setView([conf.ph/2, conf.pw/2], MAP_CONFIG.defaultZoom);
             }
         }
+        
+        // Удаляем ссылку на временную картинку, чтобы сборщик мусора очистил RAM
+        img.onload = null;
     };
 
-    // Если размеры картинки уже вычислялись ранее
-    if (conf.pw && conf.ph) {
+    if (img.complete && img.naturalWidth !== 0) {
         renderMapOverlay();
     } else {
-        // Оборачиваем загрузку в Promise, чтобы iOS не путался в асинхронности
-        await new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-                conf.pw = img.naturalWidth; 
-                conf.ph = img.naturalHeight;
-                conf.scaleX = conf.pw / conf.lw;
-                conf.scaleY = conf.ph / conf.lh;
-                resolve();
-            };
-            img.onerror = () => {
-                console.warn("Не удалось загрузить:", imgSrc);
-                resolve(); // Разрешаем промис даже при ошибке, чтобы код не завис навсегда
-            };
-            img.src = imgSrc;
-        });
-        // Сборщик мусора сам удалит img, не нужно делать img.src = ''
-        renderMapOverlay();
+        img.onload = renderMapOverlay;
     }
 }
 
