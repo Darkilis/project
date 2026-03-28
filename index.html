@@ -66,3 +66,71 @@
 
 </body>
 </html>
+<!DOCTYPE html>
+
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Карта этажа — Навигатор</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Навигатор">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+
+<!-- ПОДКЛЮЧАЕМ ВАШ ОТДЕЛЬНЫЙ ФАЙЛ СО СТИЛЯМИ -->
+<link rel="stylesheet" href="style.css">
+<!-- СКРИПТ ДЛЯ УБИЙСТВА СТАРОГО PWA-КЭША -->
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="left-panel">
+    <div id="ui-zoom" class="zoom-panel">
+        <button id="zoom-in" title="Приблизить"><i class="fas fa-plus"></i></button>
+        <button id="zoom-out" title="Отдалить"><i class="fas fa-minus"></i></button>
+        <button id="reset-view" title="Сбросить вид"><i class="fas fa-home"></i></button>
+        <button id="toggle-search" title="Поиск"><i class="fas fa-search"></i></button>
+        <button id="clear-route" title="Очистить маршрут"><i class="fas fa-times"></i></button>
+    </div>
+
+<div id="floor-panel" class="zoom-panel">
+    <button class="floor-btn" data-floor="1">1</button>
+    <button class="floor-btn" data-floor="2">2</button>
+    <button class="floor-btn active" data-floor="3">3</button>
+    <button class="floor-btn" data-floor="4">4</button>
+</div>
+
+<div id="search-panel" class="search-panel">
+    <div class="form-row">
+        <label for="start-cabinet">От:</label>
+        <input type="text" id="start-cabinet" list="start-cabinet-list" placeholder="Например: 202">
+    </div>
+    <div class="form-row">
+        <label for="end-cabinet">До:</label>
+        <input type="text" id="end-cabinet" list="end-cabinet-list" placeholder="Например: 261/14">
+    </div>
+    <!-- Раздельные списки -->
+    <datalist id="start-cabinet-list"></datalist>
+    <datalist id="end-cabinet-list"></datalist>
+    <button id="search-btn"><i class="fas fa-route"></i></button>
+</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script src="https://unpkg.com/ngraph.graph@20.0.1/dist/ngraph.graph.min.js"></script>
+
+<script src="https://unpkg.com/ngraph.path@1.3.1/dist/ngraph.path.min.js"></script>
+
+<script src="app.js"></script>
+
+</body>
+</html>
