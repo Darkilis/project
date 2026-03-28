@@ -7,7 +7,8 @@
         minZoom: MAP_CONFIG.minZoom,
         maxZoom: MAP_CONFIG.maxZoom,
         zoomSnap: 0.1,
-        attributionControl: false
+        attributionControl: false,
+        preferCanvas: true
     });
 
     let graph = createGraph();
@@ -101,7 +102,7 @@
                         const curId = `f${floorNum}_${curX},${curY}`;
                         if (prevId) {
                             const dist = Math.hypot(curX - prevX, curY - prevY);
-                            const stepSize = 10;
+                            const stepSize = 15;
                             const steps = Math.max(1, Math.floor(dist / stepSize));
                             let tempPrevId = prevId;
                             let lastX = prevX, lastY = prevY;
