@@ -304,7 +304,7 @@
         const floorData = await loadFloorData(floorNum);
         
         const img = new Image();
-        img.src = `${floorNum}.webp`;
+        img.src = `${floorNum}.png`;
         img.onload = function() {
             const conf = floorConfigs[floorNum];
             conf.pw = this.width; conf.ph = this.height;
