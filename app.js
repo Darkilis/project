@@ -296,7 +296,7 @@
         startList.innerHTML = floorNames.map(n => `<option value="${n}">`).join('');
     }
 
-    document.getElementById('search-btn').onclick = () => {
+document.getElementById('search-btn').onclick = () => {
         const sVal = document.getElementById('start-cabinet').value.trim();
         const eVal = document.getElementById('end-cabinet').value.trim();
         const start = allCabinets.find(c => c.name === sVal);
@@ -307,14 +307,32 @@
             if (path && path.length > 0) {
                 fullRoute = path;
                 destinationName = eVal;
+
+                // --- НОВОЕ: Скрытие панели поиска и клавиатуры на телефонах ---
+                if (window.innerWidth <= 768) {
+                    // 1. Сначала принудительно закрываем клавиатуру
+                    document.getElementById('start-cabinet').blur();
+                    document.getElementById('end-cabinet').blur();
+                    
+                    // 2. Ждем 100 миллисекунд, пока клавиатура начнет уезжать вниз, 
+                    // и только потом прячем саму панель.
+                    setTimeout(() => {
+                        document.getElementById('search-panel').style.display = 'none';
+                    }, 100);
+                }
+                // --------------------------------------------------------------
                 if (start.floor !== currentFloor) {
                     const btn = document.querySelector(`.floor-btn[data-floor="${start.floor}"]`);
                     if (btn) btn.click();
                 } else {
                     drawPathOnCurrentFloor();
                 }
-            } else alert("Путь не найден!");
-        } else alert("Кабинет не найден!");
+            } else {
+                alert("Путь не найден!");
+            }
+        } else {
+            alert("Кабинет не найден!");
+        }
     };
 
     document.getElementById('zoom-in').onclick = () => map.zoomIn();
