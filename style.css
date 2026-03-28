@@ -43,18 +43,16 @@ html, body, #map { height: 100%; margin: 0; padding: 0; overflow: hidden; backgr
     }
 
     /* ИЗМЕНЕНИЯ: Стили только для телефонов */
-    @media (max-width: 768px) {
-        /* 1. Смещение панели этажей вниз в центр */
-        #floor-panel {
-            position: fixed;
-            /* ДОБАВЛЕНО: дублирующее свойство для старых телефонов, если они не знают команду max() */
-            bottom: 30px; 
-            bottom: max(30px, env(safe-area-inset-bottom)); 
-            left: 50%;
-            transform: translateX(-50%);
-            margin: 0;
-            z-index: 1000;
-        }
+   @media (max-width: 768px) {
+    #floor-panel {
+        position: fixed;
+        bottom: 30px; 
+        bottom: max(30px, env(safe-area-inset-bottom)); 
+        left: 50%;
+        transform: translateX(-50%);
+        margin: 0;
+        z-index: 9999; /* ИЗМЕНЕНО: поднимаем над картой на телефонах */
+    }
  
         /* 2. Убираем + и - */
         #zoom-in, #zoom-out {
@@ -66,18 +64,30 @@ html, body, #map { height: 100%; margin: 0; padding: 0; overflow: hidden; backgr
         #reset-view { order: 2; }
         #clear-route { order: 3; }
 
-        /* 4. Компактность интерфейса без ущерба для нажатий */
-        .left-panel {
-            top: 10px; 
-            top: max(10px, env(safe-area-inset-top)); 
-            left: 10px;
-            right: 10px; /* Чтобы форма поиска не вылезала за пределы экрана */
-            gap: 10px;
-        }
-        .zoom-panel {
-            padding: 6px 10px;
-            gap: 6px;
-        }
+        /* 1. Делаем саму прозрачную панель "проницаемой" для кликов... */
+.left-panel { 
+    position: absolute; 
+    top: 15px; 
+    left: 15px; 
+    z-index: 9999; /* ИЗМЕНЕНО: ставим высокий z-index, чтобы карта точно не перекрывала */
+    display: flex; 
+    flex-direction: column; 
+    gap: 15px; 
+    pointer-events: none; 
+}
+        /* 2. А сами кнопки и плашки внутри панели делаем твердыми и кликабельными */
+.zoom-panel { 
+    background: rgba(255,255,255,0.95); 
+    backdrop-filter: blur(10px); 
+    padding: 8px 12px; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15); 
+    display: flex; 
+    gap: 8px; 
+    width: fit-content; 
+    pointer-events: auto; 
+    position: relative; /* ДОБАВЛЕНО: чинит баг с некликабельностью на iOS/Safari */
+}
         .zoom-panel button {
             width: 36px; 
             height: 36px;
