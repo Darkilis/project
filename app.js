@@ -24,11 +24,12 @@
     let currentRouteLayer = null;
     let markersLayer = L.layerGroup().addTo(map);
 
-    const uiElements = document.querySelectorAll('.left-panel');
-    uiElements.forEach(el => {
-        L.DomEvent.disableClickPropagation(el);
-        L.DomEvent.disableScrollPropagation(el);
-    });
+    // Цепляем блокировку кликов только на сами панели (они у нас имеют pointer-events: auto)
+const uiElements = document.querySelectorAll('.zoom-panel, .search-panel');
+uiElements.forEach(el => {
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+});
 
     function getProp(obj, name) {
         if (!obj.properties) return null;
