@@ -12,20 +12,52 @@
     .map-label span { color: white; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1px black; font-family: Arial, sans-serif; white-space: nowrap; pointer-events: none; display: block; text-align: center; }
     /* Анимация для маршрута */
     .running-route { animation: dash-animation 1s linear infinite; }
-    @keyframes dash-animation { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 20; } }
-
+    @keyframes dash-animation { 
+    0% { stroke-dashoffset: 0; transform: translateZ(0); } 
+    100% { stroke-dashoffset: 20; transform: translateZ(0); } 
+}
     /* ИЗМЕНЕНИЯ: Стили только для телефонов */
     @media (max-width: 768px) {
         /* 1. Смещение панели этажей вниз в центр */
-        #floor-panel {
-            position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            margin: 0;
-            z-index: 1000;
-        }
+       #floor-panel {
+    position: fixed;
+    /* Учитываем системную полосу снизу. max() выберет значение, которое больше */
+    bottom: max(30px, env(safe-area-inset-bottom)); 
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    z-index: 1000;
+}
 
+* {
+    /* Убираем серое выделение при клике */
+    -webkit-tap-highlight-color: transparent; 
+    /* Запрещаем системное меню при долгом нажатии */
+    -webkit-touch-callout: none; 
+    /* Запрещаем выделять текст случайно */
+    -webkit-user-select: none; 
+    user-select: none;
+}
+
+/* Но разрешаем вводить текст в поля поиска! */
+input {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Запрещаем "резинку" (bounce-эффект) когда тянешь карту за края экрана */
+body {
+    overscroll-behavior-y: none;
+}
+
+.left-panel {
+    /* Учитываем челку сверху */
+    top: max(10px, env(safe-area-inset-top)); 
+    left: 10px;
+    right: 10px;
+    gap: 10px;
+}
+ 
         /* 2. Убираем + и - */
         #zoom-in, #zoom-out {
             display: none !important;
