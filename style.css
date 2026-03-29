@@ -1,6 +1,13 @@
 html, body, #map { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #1e2937; }
 .leaflet-container { background: #1e2937; }
 
+.leaflet-container img.leaflet-tile {
+    max-width: none !important;
+    height: auto !important; /* иногда нужно убрать height:auto, если он задан глобально */
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 /* 1. Делаем саму прозрачную панель "проницаемой" для кликов (ДЛЯ ВСЕХ УСТРОЙСТВ) */
 .left-panel { 
     position: absolute; 
@@ -135,4 +142,35 @@ body {
         width: 38px;
         height: 38px;
     }
+}
+/* ДОБАВИТЬ ЭТО */
+/* Жестко отключаем анимацию прозрачности, чтобы избежать бликов */
+.leaflet-tile {
+    visibility: inherit !important;
+}
+.leaflet-fade-anim .leaflet-tile {
+    opacity: 1 !important;
+}
+
+/* Включаем аппаратное ускорение для всего слоя карты, а не для отдельных тайлов */
+.leaflet-tile-pane {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform;
+}
+.leaflet-tile {
+    /* Склеиваем тайлы, убирая дробные микро-щели */
+    outline: 1px solid transparent;
+    box-shadow: 0 0 1px rgba(0, 0, 0, 0.01);
+    
+    /* Отключаем мерцание при скрытии/показе слоев браузером */
+    visibility: inherit !important;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+/* Убираем анимацию прозрачности, которая дает "блики" */
+.leaflet-fade-anim .leaflet-tile {
+    opacity: 1 !important;
+    transition: none !important;
 }
