@@ -38,10 +38,9 @@ let allCabinets =[];
 let fullRoute = null;
 let destinationName = ""; 
 let transitions = {};
-let currentFloor = "3";
+let currentFloor = "1";
 let floorConfigs = {};
 let floorJsonCache = {}; 
-
 let currentImageLayer = null;
 let currentRouteLayer = null;
 let markersLayer = L.layerGroup().addTo(map);
