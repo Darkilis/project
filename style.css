@@ -3,7 +3,6 @@ html, body, #map { height: 100%; margin: 0; padding: 0; overflow: hidden; backgr
 
 .leaflet-container img.leaflet-tile {
     max-width: none !important;
-    height: auto !important; /* иногда нужно убрать height:auto, если он задан глобально */
     margin: 0 !important;
     padding: 0 !important;
 }
@@ -173,4 +172,112 @@ body {
 .leaflet-fade-anim .leaflet-tile {
     opacity: 1 !important;
     transition: none !important;
+}
+/* Убираем стандартные стили Leaflet для наших кастомных иконок */
+.custom-icon-label {
+    background: none;
+    border: none;
+}
+
+/* Общий стиль для круглых иконок на карте */
+.icon-marker {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 14px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    /* Добавляем белую обводку для контрастности */
+    border: 2px solid white; 
+}
+
+/* Специфичный цвет для лестницы */
+.stairs-icon {
+    background-color: #f59e0b; /* Оранжевый цвет */
+}
+
+/* Специфичный цвет для туалетов (если добавите) */
+.wc-icon {
+    background-color: #0ea5e9; /* Голубой цвет */
+}
+
+/* На всякий случай: стили для обычного текста кабинетов (у вас они, наверное, уже есть) */
+.map-label span {
+    background: rgba(255, 255, 255, 0.8);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #333;
+    font-weight: bold;
+    white-space: nowrap;
+}
+/* Специфичный цвет для кофемашины (приятный коричневый/кофейный) */
+.coffee-icon {
+    background-color: #8b5a2b; 
+}
+/* Мужской туалет - классический синий */
+.wc-male-icon {
+    background-color: #3b82f6; 
+}
+
+/* Женский туалет - розовый / красноватый */
+.wc-female-icon {
+    background-color: #ec4899; 
+}
+
+/* Библиотека - спокойный зеленый/бирюзовый */
+.library-icon {
+    background-color: #0d9488; 
+}
+
+/* Гардероб - фиолетовый */
+.wardrobe-icon {
+    background-color: #8b5cf6; 
+}
+
+/* Распечатка/Ксерокопия - строгий темно-серый */
+.print-icon {
+    background-color: #475569; 
+}
+/* Столовая / Буфет - красно-коралловый цвет */
+.food-icon {
+    background-color: #ef4444; 
+}
+/* Стили для панели фильтров */
+.filter-panel {
+    display: none; /* По умолчанию скрыта, открывается по кнопке */
+    flex-direction: column;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    margin-bottom: 10px;
+    gap: 8px;
+}
+
+.filter-panel label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    color: #1e2937;
+    user-select: none;
+}
+
+/* Увеличиваем чекбокс для удобства нажатия с телефона */
+.filter-panel input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+/* Фиксированная ширина для иконок в фильтре, чтобы текст шел ровно */
+.filter-panel label i {
+    width: 20px;
+    text-align: center;
+    font-size: 16px;
 }
