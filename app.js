@@ -1,15 +1,13 @@
-
-// --- НАСТРОЙКИ ЗУМА И МАСШТАБА ---
 const MAP_CONFIG = { minZoom: 0, maxZoom: 8, defaultZoom: 2 }; 
-const MAX_NATIVE_ZOOM = 8; // Уровень папок от vips
-const TILE_FACTOR = 256;    // Магическое число: 2 в степени MAX_NATIVE_ZOOM (2^5 = 32)
-// Расширяем базовый класс Leaflet, чтобы он всегда грузил тайлы "с запасом" за пределами экрана
+const MAX_NATIVE_ZOOM = 8; 
+const TILE_FACTOR = 256;    
+
 const originalGetBounds = L.GridLayer.prototype._getTiledPixelBounds;
 L.GridLayer.include({
     _getTiledPixelBounds: function (center) {
         const bounds = originalGetBounds.call(this, center);
         const tileSize = this.getTileSize();
-        const buffer = 1; // Загружать на 1 тайл (256px) больше во все стороны
+        const buffer = 1; 
 
         bounds.min.x -= tileSize.x * buffer;
         bounds.min.y -= tileSize.y * buffer;
@@ -27,15 +25,17 @@ const map = L.map('map', {
     maxZoom: MAP_CONFIG.maxZoom,
     zoomSnap: 1, 
     attributionControl: false,
-    
-    // --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
-    fadeAnimation: false, // Отключаем эффект плавного появления тайлов
-    zoomAnimation: true   // Убеждаемся, что анимация зума включена (она делает зум плавным)
+    fadeAnimation: false, 
+    zoomAnimation: true   
 });
+
+// Состояния фильтров
+let activeFilters = { coffee: false, wc: false, library: false, wardrobe: false, print: false, food: false };
+let mobileFiltersOn = false;
 
 let graph = createGraph();
 let pathFinder = null;
-let allCabinets =[];
+let allCabinets = [];
 let fullRoute = null;
 let destinationName = ""; 
 let transitions = {};
@@ -202,24 +202,20 @@ async function switchFloor(floorNum, animate = true) {
             map.removeLayer(currentImageLayer);
         }
 
-        // ВЕРНУЛИ ГРАНИЦЫ: Теперь Leaflet не будет искать кусочки x: -1
         const bounds = [[0, 0], [-(originalHeight / TILE_FACTOR), (originalWidth / TILE_FACTOR)]];
 
-        // ВЕРНУЛИ .webp: Нарезанные кусочки лежат именно в этом формате!
-currentImageLayer = L.tileLayer(`tiles/${floorNum}/{z}/{y}/{x}.png`, {
-    minZoom: MAP_CONFIG.minZoom,
-    maxZoom: MAP_CONFIG.maxZoom, 
-    maxNativeZoom: MAX_NATIVE_ZOOM,
-    tileSize: 256,
-    noWrap: true,
-    bounds: bounds,
-    
-    updateWhenZooming: false, 
-    updateWhenIdle: false,    // <--- ДОБАВИТЬ: Грузить тайлы СРАЗУ при движении, не дожидаясь остановки пальца
-    keepBuffer: 8,            // <--- ИЗМЕНИТЬ: Хранить в памяти больше старых тайлов (убирает мерцание при зуме)
-    
-    errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' 
-}).addTo(map);
+        currentImageLayer = L.tileLayer(`tiles/${floorNum}/{z}/{y}/{x}.png`, {
+            minZoom: MAP_CONFIG.minZoom,
+            maxZoom: MAP_CONFIG.maxZoom, 
+            maxNativeZoom: MAX_NATIVE_ZOOM,
+            tileSize: 256,
+            noWrap: true,
+            bounds: bounds,
+            updateWhenZooming: false, 
+            updateWhenIdle: false,    
+            keepBuffer: 8,            
+            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' 
+        }).addTo(map);
         map.setMaxBounds(bounds);
         markersLayer.clearLayers();
         
@@ -250,7 +246,6 @@ function drawPathOnCurrentFloor() {
     if (currentRouteLayer) map.removeLayer(currentRouteLayer);
     const conf = floorConfigs[currentFloor];
     
-    // Переводим координаты JSON в координаты Leaflet (делим на 32, Y уходит в минус)
     const pts = fullRoute
         .filter(n => n.data.floor === currentFloor)
         .map(n =>[
@@ -319,17 +314,70 @@ function drawPathOnCurrentFloor() {
 function loadLabels(data, floorNum) {
     const labelsLayer = findLayer(data.layers, "Labels");
     if (!labelsLayer || !labelsLayer.objects) return;
+    
     const conf = floorConfigs[floorNum];
+    
     labelsLayer.objects.forEach(obj => {
-        // Переводим координаты текста
         const lat = -(obj.y * conf.scaleY) / TILE_FACTOR;
         const lng =  (obj.x * conf.scaleX) / TILE_FACTOR;
         
+        let htmlContent = '';
+        let customClass = 'map-label';
+        let iSize = [60, 15];
+        let iAnchor = [30, 7];
+
+        const nameLower = (obj.name || '').toLowerCase();
+
+        if (nameLower.includes('лестница')) {
+            htmlContent = `<div class="icon-marker stairs-icon"><i class="fas fa-stairs"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        } 
+        else if (nameLower.includes('кофемашина')) {
+            if (!activeFilters.coffee) return; 
+            htmlContent = `<div class="icon-marker coffee-icon"><i class="fas fa-mug-hot"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('мужской')) {
+            if (!activeFilters.wc) return;
+            htmlContent = `<div class="icon-marker wc-male-icon"><i class="fas fa-person"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('женский')) {
+            if (!activeFilters.wc) return;
+            htmlContent = `<div class="icon-marker wc-female-icon"><i class="fas fa-person-dress"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('библиотека')) {
+            if (!activeFilters.library) return;
+            htmlContent = `<div class="icon-marker library-icon"><i class="fas fa-book"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('гардероб')) {
+            if (!activeFilters.wardrobe) return;
+            htmlContent = `<div class="icon-marker wardrobe-icon"><i class="fas fa-shirt"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('ксерокопия') || nameLower.includes('распечатка') || nameLower.includes('канцтовары') || nameLower.includes('концтовары')) {
+            if (!activeFilters.print) return;
+            htmlContent = `<div class="icon-marker print-icon"><i class="fas fa-print"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('столовая') || nameLower.includes('буфет')) {
+            if (!activeFilters.food) return;
+            htmlContent = `<div class="icon-marker food-icon"><i class="fas fa-utensils"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else {
+            htmlContent = `<span>${obj.name || ''}</span>`;
+        }
+        
         const icon = L.divIcon({
-            className: 'map-label',
-            html: `<span>${obj.name || ''}</span>`,
-            iconSize: [60, 15], iconAnchor: [30, 7]
+            className: customClass,
+            html: htmlContent,
+            iconSize: iSize, 
+            iconAnchor: iAnchor
         });
+        
         L.marker([lat, lng], { icon, interactive: false }).addTo(markersLayer);
     });
 }
@@ -387,10 +435,6 @@ document.getElementById('search-btn').onclick = () => {
 document.getElementById('zoom-in').onclick = () => map.zoomIn();
 document.getElementById('zoom-out').onclick = () => map.zoomOut();
 document.getElementById('reset-view').onclick = () => switchFloor(currentFloor, true);
-document.getElementById('toggle-search').onclick = () => {
-    const p = document.getElementById('search-panel');
-    p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
-};
 
 document.getElementById('clear-route').onclick = () => {
     fullRoute = null;
@@ -411,6 +455,85 @@ document.querySelectorAll('.floor-btn').forEach(btn => {
         this.classList.add('active');
         switchFloor(f, false);
     };
+});
+
+// === ЛОГИКА ИНТЕРФЕЙСА И ФИЛЬТРОВ ===
+
+document.getElementById('toggle-search').onclick = () => {
+    const p = document.getElementById('search-panel');
+    p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
+    
+    // Закрываем панель фильтров при открытии поиска (на ПК)
+    const fp = document.getElementById('filter-panel');
+    if (fp && fp.style.display === 'flex') {
+        fp.style.display = 'none';
+    }
+};
+
+// Открытие фильтров / Логика мобильной кнопки
+document.getElementById('toggle-filter-btn').onclick = function() {
+    if (window.innerWidth <= 768) {
+        // Мобильный вариант (включить/выключить всё)
+        mobileFiltersOn = !mobileFiltersOn;
+        if (mobileFiltersOn) this.classList.add('active');
+        else this.classList.remove('active');
+
+        for (let key in activeFilters) activeFilters[key] = mobileFiltersOn;
+
+        // Синхронизация ПК-меню для надежности
+        const allCb = document.getElementById('filter-all');
+        if(allCb) allCb.checked = mobileFiltersOn;
+        document.querySelectorAll('.filter-cb').forEach(cb => cb.checked = mobileFiltersOn);
+
+        switchFloor(currentFloor, false);
+        
+        const sp = document.getElementById('search-panel');
+        if (sp) sp.style.display = 'none';
+    } else {
+        // ПК вариант (открытие меню)
+        const p = document.getElementById('filter-panel');
+        p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
+        
+        if (p.style.display === 'flex') {
+            document.getElementById('search-panel').style.display = 'none';
+        }
+    }
+};
+
+const selectAllCb = document.getElementById('filter-all');
+const itemCbs = document.querySelectorAll('.filter-cb');
+
+if (selectAllCb) {
+    selectAllCb.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        itemCbs.forEach(cb => {
+            cb.checked = isChecked;
+            activeFilters[cb.value] = isChecked;
+        });
+        
+        // Синхронизация мобильной кнопки
+        mobileFiltersOn = isChecked;
+        const btn = document.getElementById('toggle-filter-btn');
+        if(mobileFiltersOn) btn.classList.add('active'); else btn.classList.remove('active');
+
+        switchFloor(currentFloor, false);
+    });
+}
+
+itemCbs.forEach(cb => {
+    cb.addEventListener('change', (e) => {
+        activeFilters[e.target.value] = e.target.checked;
+        
+        const allChecked = Array.from(itemCbs).every(c => c.checked);
+        if(selectAllCb) selectAllCb.checked = allChecked;
+        
+        // Синхронизация мобильной кнопки
+        mobileFiltersOn = allChecked;
+        const btn = document.getElementById('toggle-filter-btn');
+        if(mobileFiltersOn) btn.classList.add('active'); else btn.classList.remove('active');
+
+        switchFloor(currentFloor, false); 
+    });
 });
 
 initNavigation();
