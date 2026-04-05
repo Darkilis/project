@@ -31,7 +31,15 @@ const map = L.map('map', {
     fadeAnimation: false, // Отключаем эффект плавного появления тайлов
     zoomAnimation: true   // Убеждаемся, что анимация зума включена (она делает зум плавным)
 });
-
+// По умолчанию все выключено (false)
+let activeFilters = {
+    coffee: false,
+    wc: false,
+    library: false,
+    wardrobe: false,
+    print: false,
+    food: false
+};
 let graph = createGraph();
 let pathFinder = null;
 let allCabinets =[];
@@ -318,17 +326,78 @@ function drawPathOnCurrentFloor() {
 function loadLabels(data, floorNum) {
     const labelsLayer = findLayer(data.layers, "Labels");
     if (!labelsLayer || !labelsLayer.objects) return;
+    
     const conf = floorConfigs[floorNum];
+    
     labelsLayer.objects.forEach(obj => {
-        // Переводим координаты текста
         const lat = -(obj.y * conf.scaleY) / TILE_FACTOR;
         const lng =  (obj.x * conf.scaleX) / TILE_FACTOR;
         
+        let htmlContent = '';
+        let customClass = 'map-label';
+        let iSize = [60, 15];
+        let iAnchor = [30, 7];
+
+        const nameLower = (obj.name || '').toLowerCase();
+
+        // 1. Лестницы (ВСЕГДА ВКЛЮЧЕНЫ, нет проверки)
+        if (nameLower.includes('лестница')) {
+            htmlContent = `<div class="icon-marker stairs-icon"><i class="fas fa-stairs"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        } 
+        // 2. Кофемашина
+        else if (nameLower.includes('кофемашина')) {
+            if (!activeFilters.coffee) return; // ПРЕРЫВАЕМ ЕСЛИ ФИЛЬТР ВЫКЛЮЧЕН
+            htmlContent = `<div class="icon-marker coffee-icon"><i class="fas fa-mug-hot"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        // 3. Туалеты (Мужской и Женский)
+        else if (nameLower.includes('мужской')) {
+            if (!activeFilters.wc) return;
+            htmlContent = `<div class="icon-marker wc-male-icon"><i class="fas fa-person"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('женский')) {
+            if (!activeFilters.wc) return;
+            htmlContent = `<div class="icon-marker wc-female-icon"><i class="fas fa-person-dress"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        // 4. Библиотека
+        else if (nameLower.includes('библиотека')) {
+            if (!activeFilters.library) return;
+            htmlContent = `<div class="icon-marker library-icon"><i class="fas fa-book"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        // 5. Гардероб
+        else if (nameLower.includes('гардероб')) {
+            if (!activeFilters.wardrobe) return;
+            htmlContent = `<div class="icon-marker wardrobe-icon"><i class="fas fa-shirt"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        // 6. Печать / Ксерокопия
+        else if (nameLower.includes('ксерокопия') || nameLower.includes('распечатка') || nameLower.includes('канцтовары') || nameLower.includes('концтовары')) {
+            if (!activeFilters.print) return;
+            htmlContent = `<div class="icon-marker print-icon"><i class="fas fa-print"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        // 7. Столовая
+        else if (nameLower.includes('столовая') || nameLower.includes('буфет')) {
+            if (!activeFilters.food) return;
+            htmlContent = `<div class="icon-marker food-icon"><i class="fas fa-utensils"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        // Обычные текстовые номера кабинетов (всегда включены)
+        else {
+            htmlContent = `<span>${obj.name || ''}</span>`;
+        }
+        
         const icon = L.divIcon({
-            className: 'map-label',
-            html: `<span>${obj.name || ''}</span>`,
-            iconSize: [60, 15], iconAnchor: [30, 7]
+            className: customClass,
+            html: htmlContent,
+            iconSize: iSize, 
+            iconAnchor: iAnchor
         });
+        
         L.marker([lat, lng], { icon, interactive: false }).addTo(markersLayer);
     });
 }
@@ -382,26 +451,61 @@ document.getElementById('search-btn').onclick = () => {
         alert("Кабинет не найден!");
     }
 };
+// Открытие/закрытие панели фильтров
+document.getElementById('toggle-filter-btn').onclick = () => {
+    const p = document.getElementById('filter-panel');
+    p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
+    
+    // По желанию: закрываем панель поиска, если открываем фильтры, чтобы не было нагромождения
+    if (p.style.display === 'flex') {
+        document.getElementById('search-panel').style.display = 'none';
+    }
+};
 
-document.getElementById('zoom-in').onclick = () => map.zoomIn();
-document.getElementById('zoom-out').onclick = () => map.zoomOut();
-document.getElementById('reset-view').onclick = () => switchFloor(currentFloor, true);
+// Изменили немного кнопку поиска: если открываем поиск, закрываем фильтры
 document.getElementById('toggle-search').onclick = () => {
     const p = document.getElementById('search-panel');
     p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
+    
+    if (p.style.display === 'flex') {
+        document.getElementById('filter-panel').style.display = 'none';
+    }
 };
 
-document.getElementById('clear-route').onclick = () => {
-    fullRoute = null;
-    destinationName = "";
-    document.getElementById('start-cabinet').value = '';
-    document.getElementById('end-cabinet').value = '';
-    if (currentRouteLayer) {
-        map.removeLayer(currentRouteLayer);
-        currentRouteLayer = null;
-    }
+// Логика переключения чекбоксов фильтра
+// --- ЛОГИКА ФИЛЬТРОВ И КНОПКИ "ВКЛЮЧИТЬ ВСЁ" ---
+const selectAllCb = document.getElementById('filter-all');
+const itemCbs = document.querySelectorAll('.filter-cb');
+
+// 1. Клик по кнопке "Включить всё"
+selectAllCb.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    
+    // Перебираем все остальные чекбоксы и ставим им такую же галочку
+    itemCbs.forEach(cb => {
+        cb.checked = isChecked;
+        activeFilters[cb.value] = isChecked;
+    });
+    
+    // Перерисовываем карту
     switchFloor(currentFloor, false);
-};
+});
+
+// 2. Клик по отдельному фильтру (Туалет, Столовая и т.д.)
+itemCbs.forEach(cb => {
+    cb.addEventListener('change', (e) => {
+        // Обновляем состояние конкретного фильтра
+        activeFilters[e.target.value] = e.target.checked;
+        
+        // Проверяем: если сейчас включены вообще ВСЕ галочки, то ставим галочку и на "Включить всё"
+        // Если хотя бы одна снята - снимаем галочку с "Включить всё"
+        const allChecked = Array.from(itemCbs).every(c => c.checked);
+        selectAllCb.checked = allChecked;
+        
+        // Перерисовываем карту
+        switchFloor(currentFloor, false); 
+    });
+});
 
 document.querySelectorAll('.floor-btn').forEach(btn => {
     btn.onclick = function() {
