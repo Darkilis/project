@@ -1,0 +1,511 @@
+// --- НАСТРОЙКИ ЗУМА И МАСШТАБА ---
+const MAP_CONFIG = { minZoom: 0, maxZoom: 8, defaultZoom: 2 }; 
+const MAX_NATIVE_ZOOM = 8; // Уровень папок от vips
+const TILE_FACTOR = 256;    // Магическое число: 2 в степени MAX_NATIVE_ZOOM (2^5 = 32)
+
+// Расширяем базовый класс Leaflet, чтобы он всегда грузил тайлы "с запасом" за пределами экрана
+const originalGetBounds = L.GridLayer.prototype._getTiledPixelBounds;
+L.GridLayer.include({
+    _getTiledPixelBounds: function (center) {
+        const bounds = originalGetBounds.call(this, center);
+        const tileSize = this.getTileSize();
+        const buffer = 1; // Загружать на 1 тайл (256px) больше во все стороны
+
+        bounds.min.x -= tileSize.x * buffer;
+        bounds.min.y -= tileSize.y * buffer;
+        bounds.max.x += tileSize.x * buffer;
+        bounds.max.y += tileSize.y * buffer;
+        
+        return bounds;
+    }
+});
+
+const map = L.map('map', {
+    crs: L.CRS.Simple,
+    zoomControl: false,
+    minZoom: MAP_CONFIG.minZoom,
+    maxZoom: MAP_CONFIG.maxZoom,
+    zoomSnap: 1, 
+    attributionControl: false,
+    fadeAnimation: false, 
+    zoomAnimation: true   
+});
+
+let activeFilters = { coffee: false, wc: false, library: false, wardrobe: false, print: false, food: false };
+let mobileFiltersOn = false;
+
+let graph = createGraph();
+let pathFinder = null;
+let allCabinets = [];
+let fullRoute = null;
+let destinationName = ""; 
+let transitions = {};
+let currentFloor = "1";
+let floorConfigs = {};
+let floorJsonCache = {}; 
+let currentImageLayer = null;
+let currentRouteLayer = null;
+let markersLayer = L.layerGroup().addTo(map);
+
+// Запоминаем точные кабинеты для прорисовки концов маршрута
+let currentStartCabinet = null;
+let currentEndCabinet = null;
+
+function getProp(obj, name) {
+    if (!obj.properties) return null;
+    if (Array.isArray(obj.properties)) {
+        const p = obj.properties.find(p => p.name.toLowerCase() === name.toLowerCase());
+        return p ? p.value : null;
+    }
+    return obj.properties[name] || null;
+}
+
+function findLayer(layers, keyword) {
+    for (let layer of layers) {
+        if (layer.name && layer.name.toLowerCase().includes(keyword.toLowerCase())) return layer;
+        if (layer.layers) {
+            const found = findLayer(layer.layers, keyword);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+async function initNavigation() {
+    await loadFloorData(currentFloor);
+    switchFloor(currentFloor, false); 
+
+    const floors = ["1", "2", "3", "4"];
+    for (let f of floors) {
+        if (f !== currentFloor) {
+            try { await loadFloorData(f); } catch (e) { }
+        }
+    }
+
+    for (let id in transitions) {
+        let pts = transitions[id];
+        if (pts.length > 1) {
+            for (let i = 0; i < pts.length; i++) {
+                for (let j = i + 1; j < pts.length; j++) {
+                    graph.addLink(pts[i].nodeId, pts[j].nodeId, { weight: 10000 });
+                    graph.addLink(pts[j].nodeId, pts[i].nodeId, { weight: 10000 });
+                }
+            }
+        }
+    }
+
+    pathFinder = ngraphPath.aStar(graph, {
+        distance(a, b, link) { return link.data.weight || 1; },
+        heuristic(a, b) {
+            const floorPenalty = a.data.floor !== b.data.floor ? 20000 : 0;
+            return Math.hypot(a.data.x - b.data.x, a.data.y - b.data.y) + floorPenalty;
+        }
+    });
+
+    updateDatalist();
+}
+
+async function loadFloorData(floorNum) {
+    if (floorJsonCache[floorNum]) return floorJsonCache[floorNum];
+
+    const res = await fetch(`${floorNum}.json`);
+    const data = await res.json();
+    
+    floorJsonCache[floorNum] = data; 
+    
+    const lw = data.width * (data.tilewidth || 32);
+    const lh = data.height * (data.tileheight || 32);
+    floorConfigs[floorNum] = { lw, lh, scaleX: 1, scaleY: 1 };
+
+    // --- ОБРАБОТКА ЛИНИЙ МАРШРУТА (NODES) ---
+    const nodesLayer = findLayer(data.layers, "nodes");
+    if (nodesLayer && nodesLayer.objects) {
+        nodesLayer.objects.forEach(obj => {
+            if (obj.polyline) {
+                let prevX = null, prevY = null, prevId = null;
+                
+                obj.polyline.forEach(pt => {
+                    const curX = obj.x + pt.x;
+                    const curY = obj.y + pt.y;
+                    const curId = `f${floorNum}_${curX},${curY}`;
+                    
+                    graph.addNode(curId, { x: curX, y: curY, floor: floorNum });
+
+                    if (prevId) {
+                        const dist = Math.hypot(curX - prevX, curY - prevY);
+                        graph.addLink(prevId, curId, { weight: dist });
+                        graph.addLink(curId, prevId, { weight: dist });
+                    }
+                    
+                    prevX = curX; 
+                    prevY = curY; 
+                    prevId = curId;
+                });
+            }
+        });
+    }
+
+    // --- ОБРАБОТКА КАБИНЕТОВ ---
+    data.layers.forEach(layer => {
+        if (layer.objects) {
+            layer.objects.forEach(obj => {
+                let cabinet = getProp(obj, "cabinet");
+                let transId = getProp(obj, "transition_id");
+                if (cabinet || transId) {
+                    const nid = findNearestNode(obj.x, obj.y, floorNum);
+                    if (!nid) return;
+                    const name = cabinet || transId;
+                    allCabinets.push({
+                        name: String(name).trim(),
+                        floor: floorNum,
+                        rx: obj.x, ry: obj.y,
+                        nodeId: nid
+                    });
+                    if (transId) {
+                        if (!transitions[transId]) transitions[transId] = [];
+                        transitions[transId].push({ nodeId: nid, floor: floorNum });
+                    }
+                }
+            });
+        }
+    });
+    
+    return data; 
+}
+
+function findNearestNode(x, y, floor) {
+    let nid = null, minDist = Infinity;
+    graph.forEachNode(n => {
+        if (n.data.floor === floor) {
+            let d = Math.hypot(n.data.x - x, n.data.y - y);
+            if (d < minDist) { minDist = d; nid = n.id; }
+        }
+    });
+    return nid;
+}
+
+async function switchFloor(floorNum, animate = true) {
+    currentFloor = floorNum;
+    updateDatalist(); 
+    
+    try {
+        const data = await loadFloorData(floorNum);
+        const conf = floorConfigs[floorNum];
+
+        const originalWidth = 44800; 
+        const originalHeight = 49600;
+
+        conf.pw = originalWidth; 
+        conf.ph = originalHeight;
+        conf.scaleX = originalWidth / conf.lw;
+        conf.scaleY = originalHeight / conf.lh;
+
+        if (currentImageLayer) {
+            map.removeLayer(currentImageLayer);
+        }
+
+        const bounds = [[0, 0], [-(originalHeight / TILE_FACTOR), (originalWidth / TILE_FACTOR)]];
+
+        currentImageLayer = L.tileLayer(`tiles/${floorNum}/{z}/{y}/{x}.png`, {
+            minZoom: MAP_CONFIG.minZoom,
+            maxZoom: MAP_CONFIG.maxZoom, 
+            maxNativeZoom: MAX_NATIVE_ZOOM,
+            tileSize: 256,
+            noWrap: true,
+            bounds: bounds,
+            updateWhenZooming: false, 
+            updateWhenIdle: false,    
+            keepBuffer: 8,            
+            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' 
+        }).addTo(map);
+        map.setMaxBounds(bounds);
+        markersLayer.clearLayers();
+        
+        loadLabels(data, floorNum);
+        
+        if (fullRoute) {
+            drawPathOnCurrentFloor();
+        } else {
+            const center = [-(originalHeight / 2) / TILE_FACTOR, (originalWidth / 2) / TILE_FACTOR];
+            if (animate) {
+                map.flyTo(center, MAP_CONFIG.defaultZoom, { duration: 1.5 });
+            } else {
+                map.setView(center, MAP_CONFIG.defaultZoom);
+            }
+        }
+
+    } catch (error) {
+        console.error("Ошибка:", error);
+    }
+}
+
+window.switchFloorFromPopup = function(floor) {
+    const btn = document.querySelector(`.floor-btn[data-floor="${floor}"]`);
+    if (btn) btn.click();
+};
+
+function drawPathOnCurrentFloor() {
+    if (currentRouteLayer) map.removeLayer(currentRouteLayer);
+    const conf = floorConfigs[currentFloor];
+    
+    const forwardRoute = [...fullRoute].reverse();
+    let pts = [];
+
+    // Точка начала прямо на двери
+    if (currentStartCabinet && currentStartCabinet.floor === currentFloor) {
+        pts.push([
+            -(currentStartCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+             (currentStartCabinet.rx * conf.scaleX) / TILE_FACTOR
+        ]);
+    }
+
+    // Узлы коридоров
+    forwardRoute.filter(n => n.data.floor === currentFloor).forEach(n => {
+        pts.push([
+            -(n.data.y * conf.scaleY) / TILE_FACTOR, 
+             (n.data.x * conf.scaleX) / TILE_FACTOR
+        ]);
+    });
+
+    // Точка конца прямо на двери
+    if (currentEndCabinet && currentEndCabinet.floor === currentFloor) {
+        pts.push([
+            -(currentEndCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+             (currentEndCabinet.rx * conf.scaleX) / TILE_FACTOR
+        ]);
+    }
+
+    if (pts.length > 1) {
+        currentRouteLayer = L.polyline(pts, {
+            color: '#2563eb', weight: 5, opacity: 0.8, dashArray: '10, 10', className: 'running-route'
+        }).addTo(map);
+
+        if (currentStartCabinet && currentStartCabinet.floor === currentFloor) {
+            L.circleMarker([
+                -(currentStartCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+                 (currentStartCabinet.rx * conf.scaleX) / TILE_FACTOR
+            ], { radius: 6, color: 'green', fillOpacity: 1 }).addTo(markersLayer).bindPopup("Начало");
+        }
+        
+        if (currentEndCabinet && currentEndCabinet.floor === currentFloor) {
+            L.circleMarker([
+                -(currentEndCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+                 (currentEndCabinet.rx * conf.scaleX) / TILE_FACTOR
+            ], { radius: 6, color: 'red', fillOpacity: 1 })
+            .addTo(markersLayer)
+            .bindPopup(destinationName)
+            .openPopup();
+        }
+        map.fitBounds(currentRouteLayer.getBounds(), { padding: [50, 50] });
+    }
+
+    if (fullRoute) {
+        for (let i = 0; i < forwardRoute.length - 1; i++) {
+            let currNode = forwardRoute[i];
+            let nextNode = forwardRoute[i+1];
+
+            if (currNode.data.floor === currentFloor && nextNode.data.floor !== currentFloor) {
+                let cFloorNum = parseInt(currentFloor);
+                let nFloorNum = parseInt(nextNode.data.floor);
+                let action = nFloorNum > cFloorNum ? "Поднимитесь" : "Спуститесь";
+                let text = `${action} на ${nFloorNum} этаж по лестнице`;
+                
+                let lat = -(currNode.data.y * conf.scaleY) / TILE_FACTOR;
+                let lng =  (currNode.data.x * conf.scaleX) / TILE_FACTOR;
+
+                let markerHtml = `
+                    <div style="text-align:center; cursor:pointer; padding: 4px;" onclick="window.switchFloorFromPopup('${nextNode.data.floor}')">
+                        <span style="font-size: 13px; font-weight: bold; color: #1e2937;">${text}</span><br>
+                        <span style="color:#2563eb; text-decoration:underline; font-size: 11px;">Перейти на ${nextNode.data.floor} этаж</span>
+                    </div>
+                `;
+
+                L.circleMarker([lat, lng], { radius: 7, color: '#f59e0b', fillOpacity: 1, weight: 2 })
+                    .addTo(markersLayer)
+                    .bindPopup(markerHtml, { closeButton: false, autoClose: false })
+                    .openPopup();
+            }
+        }
+    }
+}
+
+function loadLabels(data, floorNum) {
+    const labelsLayer = findLayer(data.layers, "Labels");
+    if (!labelsLayer || !labelsLayer.objects) return;
+    
+    const conf = floorConfigs[floorNum];
+    
+    labelsLayer.objects.forEach(obj => {
+        const lat = -(obj.y * conf.scaleY) / TILE_FACTOR;
+        const lng =  (obj.x * conf.scaleX) / TILE_FACTOR;
+        
+        let htmlContent = '';
+        let customClass = 'map-label';
+        let iSize = [60, 15];
+        let iAnchor = [30, 7];
+
+        const nameLower = (obj.name || '').toLowerCase();
+
+        if (nameLower.includes('лестница')) {
+            htmlContent = `<div class="icon-marker stairs-icon"><i class="fas fa-stairs"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        } 
+        else if (nameLower.includes('вход') || nameLower.includes('выход')) {
+            htmlContent = `<div class="icon-marker entrance-icon"><i class="fas fa-door-open"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('кофемашина')) {
+            if (!activeFilters.coffee) return; 
+            htmlContent = `<div class="icon-marker coffee-icon"><i class="fas fa-mug-hot"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('мужской')) {
+            if (!activeFilters.wc) return;
+            htmlContent = `<div class="icon-marker wc-male-icon"><i class="fas fa-person"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('женский')) {
+            if (!activeFilters.wc) return;
+            htmlContent = `<div class="icon-marker wc-female-icon"><i class="fas fa-person-dress"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('библиотека')) {
+            if (!activeFilters.library) return;
+            htmlContent = `<div class="icon-marker library-icon"><i class="fas fa-book"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('гардероб')) {
+            if (!activeFilters.wardrobe) return;
+            htmlContent = `<div class="icon-marker wardrobe-icon"><i class="fas fa-shirt"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('ксерокопия') || nameLower.includes('распечатка') || nameLower.includes('канцтовары') || nameLower.includes('концтовары')) {
+            if (!activeFilters.print) return;
+            htmlContent = `<div class="icon-marker print-icon"><i class="fas fa-print"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else if (nameLower.includes('столовая') || nameLower.includes('буфет')) {
+            if (!activeFilters.food) return;
+            htmlContent = `<div class="icon-marker food-icon"><i class="fas fa-utensils"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
+        else {
+            htmlContent = `<span>${obj.name || ''}</span>`;
+        }
+        
+        const icon = L.divIcon({
+            className: customClass,
+            html: htmlContent,
+            iconSize: iSize, 
+            iconAnchor: iAnchor
+        });
+        
+        // Делаем маркеры кликабельными, чтобы показывать оригинальный текст входа/лестницы
+        const marker = L.marker([lat, lng], { icon, interactive: (customClass === 'custom-icon-label') }).addTo(markersLayer);
+        
+        if (customClass === 'custom-icon-label') {
+            marker.bindPopup(`<div style="text-align:center; font-weight:bold; color:#1e2937;">${obj.name}</div>`);
+        }
+    });
+}
+
+function updateDatalist() {
+    const endList = document.getElementById('end-cabinet-list');
+    const startList = document.getElementById('start-cabinet-list');
+    if (!endList || !startList) return;
+
+    const validCabinets = allCabinets.filter(c => /^\d/.test(c.name));
+
+    const allNames =[...new Set(validCabinets.map(c => c.name))]
+        .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+    endList.innerHTML = allNames.map(n => `<option value="${n}">`).join('');
+
+    const floorCabinets = validCabinets.filter(c => String(c.floor) === String(currentFloor));
+    const floorNames =[...new Set(floorCabinets.map(c => c.name))]
+        .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+    startList.innerHTML = floorNames.map(n => `<option value="${n}">`).join('');
+}
+
+document.getElementById('search-btn').onclick = () => {
+    const sVal = document.getElementById('start-cabinet').value.trim();
+    const eVal = document.getElementById('end-cabinet').value.trim();
+    const start = allCabinets.find(c => c.name === sVal);
+    const end = allCabinets.find(c => c.name === eVal);
+
+  if (start && end) {
+        const path = pathFinder.find(start.nodeId, end.nodeId);
+        if (path && path.length > 0) {
+            fullRoute = path;
+            destinationName = eVal;
+            
+            currentStartCabinet = start;
+            currentEndCabinet = end;
+
+            if (window.innerWidth <= 768) {
+                document.getElementById('start-cabinet').blur();
+                document.getElementById('end-cabinet').blur();
+                setTimeout(() => {
+                    document.getElementById('search-panel').style.display = 'none';
+                }, 100);
+            }
+            if (start.floor !== currentFloor) {
+                const btn = document.querySelector(`.floor-btn[data-floor="${start.floor}"]`);
+                if (btn) btn.click();
+            } else {
+                drawPathOnCurrentFloor();
+            }
+        } else {
+            alert("Путь не найден!");
+        }
+    } else {
+        alert("Кабинет не найден!");
+    }
+};
+
+document.getElementById('toggle-filter-btn').onclick = () => {
+    const p = document.getElementById('filter-panel');
+    p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
+    if (p.style.display === 'flex') {
+        document.getElementById('search-panel').style.display = 'none';
+    }
+};
+
+document.getElementById('toggle-search').onclick = () => {
+    const p = document.getElementById('search-panel');
+    p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
+    if (p.style.display === 'flex') {
+        document.getElementById('filter-panel').style.display = 'none';
+    }
+};
+
+const selectAllCb = document.getElementById('filter-all');
+const itemCbs = document.querySelectorAll('.filter-cb');
+
+selectAllCb.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    itemCbs.forEach(cb => {
+        cb.checked = isChecked;
+        activeFilters[cb.value] = isChecked;
+    });
+    switchFloor(currentFloor, false);
+});
+
+itemCbs.forEach(cb => {
+    cb.addEventListener('change', (e) => {
+        activeFilters[e.target.value] = e.target.checked;
+        const allChecked = Array.from(itemCbs).every(c => c.checked);
+        selectAllCb.checked = allChecked;
+        switchFloor(currentFloor, false); 
+    });
+});
+
+document.querySelectorAll('.floor-btn').forEach(btn => {
+    btn.onclick = function() {
+        const f = this.getAttribute('data-floor');
+        document.querySelectorAll('.floor-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        switchFloor(f, false);
+    };
+});
+
+initNavigation();
