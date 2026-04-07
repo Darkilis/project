@@ -1,23 +1,25 @@
 <!DOCTYPE html>
-
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Карта этажа — Навигатор</title>
 
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#2563eb">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Навигатор">
-<link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Навигатор">
+    <link rel="apple-touch-icon" href="icon-192.png">
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
-
-<!-- ПОДКЛЮЧАЕМ ВАШ ОТДЕЛЬНЫЙ ФАЙЛ СО СТИЛЯМИ -->
-<link rel="stylesheet" href="style.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- 1. Иконки грузятся С ВАШЕГО КОМПЬЮТЕРА (работают без интернета) -->
+    <link rel="stylesheet" href="fontawesome/css/all.min.css">
+    
+    <!-- 2. Ваши стили всегда идут последними -->
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -32,7 +34,7 @@
         <button id="toggle-search" title="Поиск"><i class="fas fa-search"></i></button>
         <button id="clear-route" title="Очистить маршрут"><i class="fas fa-times"></i></button>
         <button id="toggle-filter-btn" title="Фильтры"><i class="fas fa-filter"></i></button>
-    </div>
+    </div>  
 
     <!-- Панель этажей -->
     <div id="floor-panel" class="zoom-panel">
