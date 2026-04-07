@@ -96,7 +96,6 @@ body {
         margin: 0;
         z-index: 99999;
     }
-    #filter-panel { display: none !important; }
 
     #zoom-in, #zoom-out {
         display: none !important;
@@ -242,3 +241,47 @@ body {
 .wardrobe-icon { background-color: #8b5cf6; }
 .print-icon { background-color: #475569; }
 .food-icon { background-color: #ef4444; }
+
+/* Стили для кастомного выпадающего списка (Поиск) */
+.input-wrapper { position: relative; flex: 1; }
+.input-wrapper input { width: 100%; box-sizing: border-box; }
+.autocomplete-list {
+    display: none; 
+    position: absolute; 
+    top: 100%; 
+    left: 0; 
+    right: 0;
+    background: #ffffff; 
+    border: 2px solid #e2e8f0; 
+    border-radius: 8px;
+    max-height: 200px; 
+    overflow-y: auto; 
+    z-index: 100000;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+    margin-top: 4px;
+}
+.autocomplete-list div {
+    padding: 10px 14px; 
+    cursor: pointer; 
+    border-bottom: 1px solid #f1f5f9; 
+    font-size: 15px; 
+    color: #1e2937;
+}
+.autocomplete-list div:last-child { border-bottom: none; }
+.autocomplete-list div:hover, .autocomplete-list div:active { background: #eff6ff; color: #2563eb; }
+
+/* Обновленные стили для телефонов */
+@media (max-width: 768px) {
+    /* Делаем панель фильтров на всю ширину экрана, как и поиск */
+    .filter-panel {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+    }
+
+    /* Настраиваем порядок кнопок */
+    #toggle-search { order: 1; }         /* 1. Поиск */
+    #toggle-filter-btn { order: 2; }     /* 2. Фильтр */
+    #reset-view { order: 3; }            /* 3. Домой */
+    #clear-route { order: 4; }           /* 4. Очистить */
+}
