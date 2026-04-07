@@ -409,22 +409,68 @@ function loadLabels(data, floorNum) {
     });
 }
 
+// Глобальные переменные для хранения списков кабинетов
+let availableStartNames = [];
+let availableEndNames = [];
+
 function updateDatalist() {
-    const endList = document.getElementById('end-cabinet-list');
-    const startList = document.getElementById('start-cabinet-list');
-    if (!endList || !startList) return;
-
     const validCabinets = allCabinets.filter(c => /^\d/.test(c.name));
-
-    const allNames =[...new Set(validCabinets.map(c => c.name))]
+    
+    availableEndNames = [...new Set(validCabinets.map(c => c.name))]
         .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
-    endList.innerHTML = allNames.map(n => `<option value="${n}">`).join('');
 
     const floorCabinets = validCabinets.filter(c => String(c.floor) === String(currentFloor));
-    const floorNames =[...new Set(floorCabinets.map(c => c.name))]
+    availableStartNames = [...new Set(floorCabinets.map(c => c.name))]
         .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
-    startList.innerHTML = floorNames.map(n => `<option value="${n}">`).join('');
 }
+
+// Функция для создания умного выпадающего списка
+function setupAutocomplete(inputId, listId, getNamesArray) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+
+    // Обработка ввода и фокуса
+    function onInputOrFocus() {
+        const val = input.value.trim().toLowerCase();
+        const names = getNamesArray();
+        list.innerHTML = '';
+        
+        // Показываем все при фокусе, либо фильтруем при вводе
+        const filtered = val ? names.filter(n => n.toLowerCase().includes(val)) : names;
+        
+        if (filtered.length === 0) {
+            list.style.display = 'none';
+            return;
+        }
+
+        filtered.forEach(name => {
+            const item = document.createElement('div');
+            item.innerHTML = name.replace(new RegExp(val, "gi"), match => `<strong>${match}</strong>`); // Выделяем совпадение жирным
+            item.onclick = (e) => {
+                e.stopPropagation();
+                input.value = name;
+                list.style.display = 'none';
+            };
+            list.appendChild(item);
+        });
+        
+        list.style.display = 'block';
+    }
+
+    input.addEventListener('input', onInputOrFocus);
+    input.addEventListener('focus', onInputOrFocus);
+
+    // Скрываем список при клике в любое другое место
+    document.addEventListener('click', (e) => {
+        if (e.target !== input && e.target !== list && !list.contains(e.target)) {
+            list.style.display = 'none';
+        }
+    });
+}
+
+// Инициализируем наши новые списки (Добавьте это в самый низ файла app.js)
+setupAutocomplete('start-cabinet', 'start-list', () => availableStartNames);
+setupAutocomplete('end-cabinet', 'end-list', () => availableEndNames);
 
 document.getElementById('search-btn').onclick = () => {
     const sVal = document.getElementById('start-cabinet').value.trim();
