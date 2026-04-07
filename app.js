@@ -2,6 +2,7 @@
 const MAP_CONFIG = { minZoom: 0, maxZoom: 8, defaultZoom: 2 }; 
 const MAX_NATIVE_ZOOM = 8; // Уровень папок от vips
 const TILE_FACTOR = 256;    // Магическое число: 2 в степени MAX_NATIVE_ZOOM (2^5 = 32)
+
 // Расширяем базовый класс Leaflet, чтобы он всегда грузил тайлы "с запасом" за пределами экрана
 const originalGetBounds = L.GridLayer.prototype._getTiledPixelBounds;
 L.GridLayer.include({
@@ -26,19 +27,16 @@ const map = L.map('map', {
     maxZoom: MAP_CONFIG.maxZoom,
     zoomSnap: 1, 
     attributionControl: false,
-    
-    // --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
-    fadeAnimation: false, // Отключаем эффект плавного появления тайлов
-    zoomAnimation: true   // Убеждаемся, что анимация зума включена (она делает зум плавным)
+    fadeAnimation: false, 
+    zoomAnimation: true   
 });
-// По умолчанию все выключено (false)
 
 let activeFilters = { coffee: false, wc: false, library: false, wardrobe: false, print: false, food: false };
 let mobileFiltersOn = false;
 
 let graph = createGraph();
 let pathFinder = null;
-let allCabinets =[];
+let allCabinets = [];
 let fullRoute = null;
 let destinationName = ""; 
 let transitions = {};
@@ -48,6 +46,10 @@ let floorJsonCache = {};
 let currentImageLayer = null;
 let currentRouteLayer = null;
 let markersLayer = L.layerGroup().addTo(map);
+
+// Запоминаем точные кабинеты для прорисовки концов маршрута
+let currentStartCabinet = null;
+let currentEndCabinet = null;
 
 function getProp(obj, name) {
     if (!obj.properties) return null;
@@ -115,38 +117,35 @@ async function loadFloorData(floorNum) {
     const lh = data.height * (data.tileheight || 32);
     floorConfigs[floorNum] = { lw, lh, scaleX: 1, scaleY: 1 };
 
+    // --- ОБРАБОТКА ЛИНИЙ МАРШРУТА (NODES) ---
     const nodesLayer = findLayer(data.layers, "nodes");
     if (nodesLayer && nodesLayer.objects) {
         nodesLayer.objects.forEach(obj => {
             if (obj.polyline) {
                 let prevX = null, prevY = null, prevId = null;
+                
                 obj.polyline.forEach(pt => {
                     const curX = obj.x + pt.x;
                     const curY = obj.y + pt.y;
                     const curId = `f${floorNum}_${curX},${curY}`;
+                    
+                    graph.addNode(curId, { x: curX, y: curY, floor: floorNum });
+
                     if (prevId) {
                         const dist = Math.hypot(curX - prevX, curY - prevY);
-                        const stepSize = 15;
-                        const steps = Math.max(1, Math.floor(dist / stepSize));
-                        let tempPrevId = prevId;
-                        let lastX = prevX, lastY = prevY;
-                        for (let i = 1; i <= steps; i++) {
-                            const ix = prevX + (curX - prevX) * (i / steps);
-                            const iy = prevY + (curY - prevY) * (i / steps);
-                            const iId = i === steps ? curId : `f${floorNum}_${ix.toFixed(2)},${iy.toFixed(2)}`;
-                            const w = Math.hypot(ix - lastX, iy - lastY);
-                            graph.addNode(iId, { x: ix, y: iy, floor: floorNum });
-                            graph.addLink(tempPrevId, iId, { weight: w });
-                            graph.addLink(iId, tempPrevId, { weight: w });
-                            tempPrevId = iId; lastX = ix; lastY = iy;
-                        }
-                    } else { graph.addNode(curId, { x: curX, y: curY, floor: floorNum }); }
-                    prevX = curX; prevY = curY; prevId = curId;
+                        graph.addLink(prevId, curId, { weight: dist });
+                        graph.addLink(curId, prevId, { weight: dist });
+                    }
+                    
+                    prevX = curX; 
+                    prevY = curY; 
+                    prevId = curId;
                 });
             }
         });
     }
 
+    // --- ОБРАБОТКА КАБИНЕТОВ ---
     data.layers.forEach(layer => {
         if (layer.objects) {
             layer.objects.forEach(obj => {
@@ -205,24 +204,20 @@ async function switchFloor(floorNum, animate = true) {
             map.removeLayer(currentImageLayer);
         }
 
-        // ВЕРНУЛИ ГРАНИЦЫ: Теперь Leaflet не будет искать кусочки x: -1
         const bounds = [[0, 0], [-(originalHeight / TILE_FACTOR), (originalWidth / TILE_FACTOR)]];
 
-        // ВЕРНУЛИ .webp: Нарезанные кусочки лежат именно в этом формате!
-currentImageLayer = L.tileLayer(`tiles/${floorNum}/{z}/{y}/{x}.png`, {
-    minZoom: MAP_CONFIG.minZoom,
-    maxZoom: MAP_CONFIG.maxZoom, 
-    maxNativeZoom: MAX_NATIVE_ZOOM,
-    tileSize: 256,
-    noWrap: true,
-    bounds: bounds,
-    
-    updateWhenZooming: false, 
-    updateWhenIdle: false,    // <--- ДОБАВИТЬ: Грузить тайлы СРАЗУ при движении, не дожидаясь остановки пальца
-    keepBuffer: 8,            // <--- ИЗМЕНИТЬ: Хранить в памяти больше старых тайлов (убирает мерцание при зуме)
-    
-    errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' 
-}).addTo(map);
+        currentImageLayer = L.tileLayer(`tiles/${floorNum}/{z}/{y}/{x}.png`, {
+            minZoom: MAP_CONFIG.minZoom,
+            maxZoom: MAP_CONFIG.maxZoom, 
+            maxNativeZoom: MAX_NATIVE_ZOOM,
+            tileSize: 256,
+            noWrap: true,
+            bounds: bounds,
+            updateWhenZooming: false, 
+            updateWhenIdle: false,    
+            keepBuffer: 8,            
+            errorTileUrl: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' 
+        }).addTo(map);
         map.setMaxBounds(bounds);
         markersLayer.clearLayers();
         
@@ -231,7 +226,7 @@ currentImageLayer = L.tileLayer(`tiles/${floorNum}/{z}/{y}/{x}.png`, {
         if (fullRoute) {
             drawPathOnCurrentFloor();
         } else {
-            const center =[-(originalHeight / 2) / TILE_FACTOR, (originalWidth / 2) / TILE_FACTOR];
+            const center = [-(originalHeight / 2) / TILE_FACTOR, (originalWidth / 2) / TILE_FACTOR];
             if (animate) {
                 map.flyTo(center, MAP_CONFIG.defaultZoom, { duration: 1.5 });
             } else {
@@ -253,43 +248,58 @@ function drawPathOnCurrentFloor() {
     if (currentRouteLayer) map.removeLayer(currentRouteLayer);
     const conf = floorConfigs[currentFloor];
     
-    // Переводим координаты JSON в координаты Leaflet (делим на 32, Y уходит в минус)
-    const pts = fullRoute
-        .filter(n => n.data.floor === currentFloor)
-        .map(n =>[
+    const forwardRoute = [...fullRoute].reverse();
+    let pts = [];
+
+    // Точка начала прямо на двери
+    if (currentStartCabinet && currentStartCabinet.floor === currentFloor) {
+        pts.push([
+            -(currentStartCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+             (currentStartCabinet.rx * conf.scaleX) / TILE_FACTOR
+        ]);
+    }
+
+    // Узлы коридоров
+    forwardRoute.filter(n => n.data.floor === currentFloor).forEach(n => {
+        pts.push([
             -(n.data.y * conf.scaleY) / TILE_FACTOR, 
              (n.data.x * conf.scaleX) / TILE_FACTOR
         ]);
+    });
+
+    // Точка конца прямо на двери
+    if (currentEndCabinet && currentEndCabinet.floor === currentFloor) {
+        pts.push([
+            -(currentEndCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+             (currentEndCabinet.rx * conf.scaleX) / TILE_FACTOR
+        ]);
+    }
 
     if (pts.length > 1) {
         currentRouteLayer = L.polyline(pts, {
             color: '#2563eb', weight: 5, opacity: 0.8, dashArray: '10, 10', className: 'running-route'
         }).addTo(map);
 
-        const startNode = fullRoute[fullRoute.length - 1];
-        const endNode = fullRoute[0]; 
-        
-        if (startNode.data.floor === currentFloor) {
+        if (currentStartCabinet && currentStartCabinet.floor === currentFloor) {
             L.circleMarker([
-                -(startNode.data.y * conf.scaleY) / TILE_FACTOR, 
-                 (startNode.data.x * conf.scaleX) / TILE_FACTOR
+                -(currentStartCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+                 (currentStartCabinet.rx * conf.scaleX) / TILE_FACTOR
             ], { radius: 6, color: 'green', fillOpacity: 1 }).addTo(markersLayer).bindPopup("Начало");
         }
         
-        if (endNode.data.floor === currentFloor) {
+        if (currentEndCabinet && currentEndCabinet.floor === currentFloor) {
             L.circleMarker([
-                -(endNode.data.y * conf.scaleY) / TILE_FACTOR, 
-                 (endNode.data.x * conf.scaleX) / TILE_FACTOR
+                -(currentEndCabinet.ry * conf.scaleY) / TILE_FACTOR, 
+                 (currentEndCabinet.rx * conf.scaleX) / TILE_FACTOR
             ], { radius: 6, color: 'red', fillOpacity: 1 })
             .addTo(markersLayer)
             .bindPopup(destinationName)
             .openPopup();
         }
-        map.fitBounds(currentRouteLayer.getBounds(), { padding:[50, 50] });
+        map.fitBounds(currentRouteLayer.getBounds(), { padding: [50, 50] });
     }
 
     if (fullRoute) {
-        const forwardRoute = [...fullRoute].reverse();
         for (let i = 0; i < forwardRoute.length - 1; i++) {
             let currNode = forwardRoute[i];
             let nextNode = forwardRoute[i+1];
@@ -336,18 +346,19 @@ function loadLabels(data, floorNum) {
 
         const nameLower = (obj.name || '').toLowerCase();
 
-        // 1. Лестницы (ВСЕГДА ВКЛЮЧЕНЫ, нет проверки)
         if (nameLower.includes('лестница')) {
             htmlContent = `<div class="icon-marker stairs-icon"><i class="fas fa-stairs"></i></div>`;
             customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
         } 
-        // 2. Кофемашина
+        else if (nameLower.includes('вход') || nameLower.includes('выход')) {
+            htmlContent = `<div class="icon-marker entrance-icon"><i class="fas fa-door-open"></i></div>`;
+            customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
+        }
         else if (nameLower.includes('кофемашина')) {
-            if (!activeFilters.coffee) return; // ПРЕРЫВАЕМ ЕСЛИ ФИЛЬТР ВЫКЛЮЧЕН
+            if (!activeFilters.coffee) return; 
             htmlContent = `<div class="icon-marker coffee-icon"><i class="fas fa-mug-hot"></i></div>`;
             customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
         }
-        // 3. Туалеты (Мужской и Женский)
         else if (nameLower.includes('мужской')) {
             if (!activeFilters.wc) return;
             htmlContent = `<div class="icon-marker wc-male-icon"><i class="fas fa-person"></i></div>`;
@@ -358,31 +369,26 @@ function loadLabels(data, floorNum) {
             htmlContent = `<div class="icon-marker wc-female-icon"><i class="fas fa-person-dress"></i></div>`;
             customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
         }
-        // 4. Библиотека
         else if (nameLower.includes('библиотека')) {
             if (!activeFilters.library) return;
             htmlContent = `<div class="icon-marker library-icon"><i class="fas fa-book"></i></div>`;
             customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
         }
-        // 5. Гардероб
         else if (nameLower.includes('гардероб')) {
             if (!activeFilters.wardrobe) return;
             htmlContent = `<div class="icon-marker wardrobe-icon"><i class="fas fa-shirt"></i></div>`;
             customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
         }
-        // 6. Печать / Ксерокопия
         else if (nameLower.includes('ксерокопия') || nameLower.includes('распечатка') || nameLower.includes('канцтовары') || nameLower.includes('концтовары')) {
             if (!activeFilters.print) return;
             htmlContent = `<div class="icon-marker print-icon"><i class="fas fa-print"></i></div>`;
             customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
         }
-        // 7. Столовая
         else if (nameLower.includes('столовая') || nameLower.includes('буфет')) {
             if (!activeFilters.food) return;
             htmlContent = `<div class="icon-marker food-icon"><i class="fas fa-utensils"></i></div>`;
             customClass = 'custom-icon-label'; iSize = [30, 30]; iAnchor = [15, 15];
         }
-        // Обычные текстовые номера кабинетов (всегда включены)
         else {
             htmlContent = `<span>${obj.name || ''}</span>`;
         }
@@ -394,7 +400,12 @@ function loadLabels(data, floorNum) {
             iconAnchor: iAnchor
         });
         
-        L.marker([lat, lng], { icon, interactive: false }).addTo(markersLayer);
+        // Делаем маркеры кликабельными, чтобы показывать оригинальный текст входа/лестницы
+        const marker = L.marker([lat, lng], { icon, interactive: (customClass === 'custom-icon-label') }).addTo(markersLayer);
+        
+        if (customClass === 'custom-icon-label') {
+            marker.bindPopup(`<div style="text-align:center; font-weight:bold; color:#1e2937;">${obj.name}</div>`);
+        }
     });
 }
 
@@ -421,11 +432,14 @@ document.getElementById('search-btn').onclick = () => {
     const start = allCabinets.find(c => c.name === sVal);
     const end = allCabinets.find(c => c.name === eVal);
 
-    if (start && end) {
+  if (start && end) {
         const path = pathFinder.find(start.nodeId, end.nodeId);
         if (path && path.length > 0) {
             fullRoute = path;
             destinationName = eVal;
+            
+            currentStartCabinet = start;
+            currentEndCabinet = end;
 
             if (window.innerWidth <= 768) {
                 document.getElementById('start-cabinet').blur();
@@ -447,58 +461,40 @@ document.getElementById('search-btn').onclick = () => {
         alert("Кабинет не найден!");
     }
 };
-// Открытие/закрытие панели фильтров
+
 document.getElementById('toggle-filter-btn').onclick = () => {
     const p = document.getElementById('filter-panel');
     p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
-    
-    // По желанию: закрываем панель поиска, если открываем фильтры, чтобы не было нагромождения
     if (p.style.display === 'flex') {
         document.getElementById('search-panel').style.display = 'none';
     }
 };
 
-// Изменили немного кнопку поиска: если открываем поиск, закрываем фильтры
 document.getElementById('toggle-search').onclick = () => {
     const p = document.getElementById('search-panel');
     p.style.display = (p.style.display === 'none' || p.style.display === '') ? 'flex' : 'none';
-    
     if (p.style.display === 'flex') {
         document.getElementById('filter-panel').style.display = 'none';
     }
 };
 
-// Логика переключения чекбоксов фильтра
-// --- ЛОГИКА ФИЛЬТРОВ И КНОПКИ "ВКЛЮЧИТЬ ВСЁ" ---
 const selectAllCb = document.getElementById('filter-all');
 const itemCbs = document.querySelectorAll('.filter-cb');
 
-// 1. Клик по кнопке "Включить всё"
 selectAllCb.addEventListener('change', (e) => {
     const isChecked = e.target.checked;
-    
-    // Перебираем все остальные чекбоксы и ставим им такую же галочку
     itemCbs.forEach(cb => {
         cb.checked = isChecked;
         activeFilters[cb.value] = isChecked;
     });
-    
-    // Перерисовываем карту
     switchFloor(currentFloor, false);
 });
 
-// 2. Клик по отдельному фильтру (Туалет, Столовая и т.д.)
 itemCbs.forEach(cb => {
     cb.addEventListener('change', (e) => {
-        // Обновляем состояние конкретного фильтра
         activeFilters[e.target.value] = e.target.checked;
-        
-        // Проверяем: если сейчас включены вообще ВСЕ галочки, то ставим галочку и на "Включить всё"
-        // Если хотя бы одна снята - снимаем галочку с "Включить всё"
         const allChecked = Array.from(itemCbs).every(c => c.checked);
         selectAllCb.checked = allChecked;
-        
-        // Перерисовываем карту
         switchFloor(currentFloor, false); 
     });
 });
