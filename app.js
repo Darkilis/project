@@ -1,5 +1,5 @@
 // --- НАСТРОЙКИ ЗУМА И МАСШТАБА ---
-const MAP_CONFIG = { minZoom: 0, maxZoom: 8, defaultZoom: 2 }; 
+const MAP_CONFIG = { minZoom: 2, maxZoom: 8, defaultZoom: 2 }; 
 const MAX_NATIVE_ZOOM = 8; // Уровень папок от vips
 const TILE_FACTOR = 256;    // Магическое число: 2 в степени MAX_NATIVE_ZOOM (2^5 = 32)
 
@@ -25,7 +25,8 @@ const map = L.map('map', {
     zoomControl: false,
     minZoom: MAP_CONFIG.minZoom,
     maxZoom: MAP_CONFIG.maxZoom,
-    zoomSnap: 1, 
+    zoomSnap: 1,        // РАЗРЕШАЕМ ДРОБНЫЙ ЗУМ (было 1)
+    zoomDelta: 0.5,       // Шаг при нажатии кнопок + и -
     attributionControl: false,
     fadeAnimation: false, 
     zoomAnimation: true   
@@ -409,22 +410,68 @@ function loadLabels(data, floorNum) {
     });
 }
 
+// Глобальные переменные для хранения списков кабинетов
+let availableStartNames = [];
+let availableEndNames = [];
+
 function updateDatalist() {
-    const endList = document.getElementById('end-cabinet-list');
-    const startList = document.getElementById('start-cabinet-list');
-    if (!endList || !startList) return;
-
     const validCabinets = allCabinets.filter(c => /^\d/.test(c.name));
-
-    const allNames =[...new Set(validCabinets.map(c => c.name))]
+    
+    availableEndNames = [...new Set(validCabinets.map(c => c.name))]
         .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
-    endList.innerHTML = allNames.map(n => `<option value="${n}">`).join('');
 
     const floorCabinets = validCabinets.filter(c => String(c.floor) === String(currentFloor));
-    const floorNames =[...new Set(floorCabinets.map(c => c.name))]
+    availableStartNames = [...new Set(floorCabinets.map(c => c.name))]
         .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
-    startList.innerHTML = floorNames.map(n => `<option value="${n}">`).join('');
 }
+
+// Функция для создания умного выпадающего списка
+function setupAutocomplete(inputId, listId, getNamesArray) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+
+    // Обработка ввода и фокуса
+    function onInputOrFocus() {
+        const val = input.value.trim().toLowerCase();
+        const names = getNamesArray();
+        list.innerHTML = '';
+        
+        // Показываем все при фокусе, либо фильтруем при вводе
+        const filtered = val ? names.filter(n => n.toLowerCase().includes(val)) : names;
+        
+        if (filtered.length === 0) {
+            list.style.display = 'none';
+            return;
+        }
+
+        filtered.forEach(name => {
+            const item = document.createElement('div');
+            item.innerHTML = name.replace(new RegExp(val, "gi"), match => `<strong>${match}</strong>`); // Выделяем совпадение жирным
+            item.onclick = (e) => {
+                e.stopPropagation();
+                input.value = name;
+                list.style.display = 'none';
+            };
+            list.appendChild(item);
+        });
+        
+        list.style.display = 'block';
+    }
+
+    input.addEventListener('input', onInputOrFocus);
+    input.addEventListener('focus', onInputOrFocus);
+
+    // Скрываем список при клике в любое другое место
+    document.addEventListener('click', (e) => {
+        if (e.target !== input && e.target !== list && !list.contains(e.target)) {
+            list.style.display = 'none';
+        }
+    });
+}
+
+// Инициализируем наши новые списки (Добавьте это в самый низ файла app.js)
+setupAutocomplete('start-cabinet', 'start-list', () => availableStartNames);
+setupAutocomplete('end-cabinet', 'end-list', () => availableEndNames);
 
 document.getElementById('search-btn').onclick = () => {
     const sVal = document.getElementById('start-cabinet').value.trim();
@@ -507,5 +554,34 @@ document.querySelectorAll('.floor-btn').forEach(btn => {
         switchFloor(f, false);
     };
 });
+
+// --- УМНАЯ КНОПКА "ДОМОЙ" ---
+document.getElementById('reset-view').onclick = () => {
+    // 1. Если маршрут активен (существует и добавлен на карту)
+    if (currentRouteLayer && map.hasLayer(currentRouteLayer)) {
+        map.flyToBounds(currentRouteLayer.getBounds(), { 
+            padding: [50, 50], 
+            duration: 1 // Плавная анимация (1 секунда)
+        });
+    } 
+    // 2. Если маршрута нет
+    else {
+        // Берем базовые размеры из логики переключения этажей
+        const originalWidth = 44800; 
+        const originalHeight = 49600;
+        const center = [-(originalHeight / 2) / TILE_FACTOR, (originalWidth / 2) / TILE_FACTOR];
+        
+        map.flyTo(center, MAP_CONFIG.defaultZoom, { duration: 1 });
+    }
+};
+
+// --- (ОПЦИОНАЛЬНО) Оживляем кнопки + и - если они еще не работают ---
+document.getElementById('zoom-in').onclick = () => {
+    map.zoomIn();
+};
+
+document.getElementById('zoom-out').onclick = () => {
+    map.zoomOut();
+};
 
 initNavigation();

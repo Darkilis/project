@@ -58,19 +58,22 @@
     </div>
 
     <!-- Панель поиска -->
-    <div id="search-panel" class="search-panel">
-        <div class="form-row">
-            <label for="start-cabinet">От:</label>
-            <input type="text" id="start-cabinet" list="start-cabinet-list" placeholder="Например: 202">
+<div id="search-panel" class="search-panel">
+    <div class="form-row">
+        <label for="start-cabinet">От:</label>
+        <div class="input-wrapper">
+            <input type="text" id="start-cabinet" autocomplete="off" placeholder="Например: 202">
+            <div id="start-list" class="autocomplete-list"></div>
         </div>
-        <div class="form-row">
-            <label for="end-cabinet">До:</label>
-            <input type="text" id="end-cabinet" list="end-cabinet-list" placeholder="Например: 261/14">
-        </div>
-        <datalist id="start-cabinet-list"></datalist>
-        <datalist id="end-cabinet-list"></datalist>
-        <button id="search-btn"><i class="fas fa-route"></i></button>
     </div>
+    <div class="form-row">
+        <label for="end-cabinet">До:</label>
+        <div class="input-wrapper">
+            <input type="text" id="end-cabinet" autocomplete="off" placeholder="Например: 261/14">
+            <div id="end-list" class="autocomplete-list"></div>
+        </div>
+    </div>
+    <button id="search-btn"><i class="fas fa-route"></i></button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
