@@ -25,11 +25,11 @@ const map = L.map('map', {
     zoomControl: false,
     minZoom: MAP_CONFIG.minZoom,
     maxZoom: MAP_CONFIG.maxZoom,
-    zoomSnap: 1,        // РАЗРЕШАЕМ ДРОБНЫЙ ЗУМ (было 1)
-    zoomDelta: 0.5,       // Шаг при нажатии кнопок + и -
+    zoomSnap: 0.5,      // ← ИЗМЕНИТЬ НА 0.5
+    zoomDelta: 0.5,     // оставляем как есть
     attributionControl: false,
-    fadeAnimation: false, 
-    zoomAnimation: true   
+    fadeAnimation: false,
+    zoomAnimation: true
 });
 
 let activeFilters = { coffee: false, wc: false, library: false, wardrobe: false, print: false, food: false };
@@ -249,7 +249,7 @@ function drawPathOnCurrentFloor() {
     if (currentRouteLayer) map.removeLayer(currentRouteLayer);
     const conf = floorConfigs[currentFloor];
     
-    const forwardRoute = [...fullRoute].reverse();
+const forwardRoute = [...fullRoute].reverse();   // Теперь путь ДЕЙСТВИТЕЛЬНО идёт от "ОТ" → "ДО"
     let pts = [];
 
     // Точка начала прямо на двери
@@ -415,14 +415,45 @@ let availableStartNames = [];
 let availableEndNames = [];
 
 function updateDatalist() {
-    const validCabinets = allCabinets.filter(c => /^\d/.test(c.name));
-    
-    availableEndNames = [...new Set(validCabinets.map(c => c.name))]
+    const normalCabinets = allCabinets.filter(c => /^\d/.test(c.name));
+
+    const specialNames = [
+        "ВХОД/ВЫХОД СО СТОРОНЫ БЫКОВ",
+        "ВХОД/ВЫХОД СО СТОРОНЫ ПЛОЩАДИ"
+    ];
+
+    const curr = String(currentFloor);
+
+    // ====================== "ОТ" ======================
+    let startNames = [];
+    if (curr === "1") {
+        startNames = [...specialNames];           // входы/выходы только на 1 этаже вверху
+    }
+    const currentNormalNames = normalCabinets
+        .filter(c => String(c.floor) === curr)
+        .map(c => c.name)
         .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
 
-    const floorCabinets = validCabinets.filter(c => String(c.floor) === String(currentFloor));
-    availableStartNames = [...new Set(floorCabinets.map(c => c.name))]
-        .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+    startNames = [...startNames, ...currentNormalNames];
+    availableStartNames = [...new Set(startNames)];
+
+    // ====================== "ДО" ======================
+    let endNames = [...specialNames];   // всегда в самом верху "ДО" (на любом этаже)
+
+    // нормальные кабинеты текущего этажа
+    endNames = [...endNames, ...currentNormalNames];
+
+    // остальные этажи по порядку
+    const otherFloors = ["1", "2", "3", "4"].filter(f => f !== curr);
+    otherFloors.forEach(f => {
+        const floorNames = normalCabinets
+            .filter(c => String(c.floor) === f)
+            .map(c => c.name)
+            .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+        endNames = [...endNames, ...floorNames];
+    });
+
+    availableEndNames = [...new Set(endNames)];
 }
 
 // Функция для создания умного выпадающего списка
@@ -469,9 +500,27 @@ function setupAutocomplete(inputId, listId, getNamesArray) {
     });
 }
 
-// Инициализируем наши новые списки (Добавьте это в самый низ файла app.js)
+// Инициализируем наши новые списки
 setupAutocomplete('start-cabinet', 'start-list', () => availableStartNames);
-setupAutocomplete('end-cabinet', 'end-list', () => availableEndNames);
+
+// === ДИНАМИЧЕСКАЯ ФИЛЬТРАЦИЯ "ДО" на 1 этаже ===
+const specialNames = [
+    "ВХОД/ВЫХОД СО СТОРОНЫ БЫКОВ",
+    "ВХОД/ВЫХОД СО СТОРОНЫ ПЛОЩАДИ"
+];
+
+function getDynamicEndNames() {
+    let names = [...availableEndNames];
+    if (currentFloor === "1") {
+        const startVal = document.getElementById('start-cabinet').value.trim();
+        if (specialNames.includes(startVal)) {
+            names = names.filter(n => !specialNames.includes(n));
+        }
+    }
+    return names;
+}
+
+setupAutocomplete('end-cabinet', 'end-list', getDynamicEndNames);
 
 document.getElementById('search-btn').onclick = () => {
     const sVal = document.getElementById('start-cabinet').value.trim();
@@ -582,6 +631,29 @@ document.getElementById('zoom-in').onclick = () => {
 
 document.getElementById('zoom-out').onclick = () => {
     map.zoomOut();
+};
+
+// --- КНОПКА ОЧИСТКИ МАРШРУТА ---
+document.getElementById('clear-route').onclick = () => {
+    // 1. Удаляем линию маршрута с карты
+    if (currentRouteLayer && map.hasLayer(currentRouteLayer)) {
+        map.removeLayer(currentRouteLayer);
+        currentRouteLayer = null;
+    }
+
+    // 2. Обнуляем переменные маршрута
+    fullRoute = null;
+    currentStartCabinet = null;
+    currentEndCabinet = null;
+    destinationName = "";
+
+    // 3. Очищаем поля ввода поиска
+    document.getElementById('start-cabinet').value = '';
+    document.getElementById('end-cabinet').value = '';
+
+    // 4. Перерисовываем текущий этаж, чтобы убрать маркеры начала/конца и подсказки лестниц.
+    // Функция switchFloor сама очистит markersLayer и заново нарисует только нужные иконки.
+    switchFloor(currentFloor, false);
 };
 
 initNavigation();
