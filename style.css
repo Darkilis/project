@@ -78,7 +78,7 @@ html, body, #map { height: 100%; margin: 0; padding: 0; overflow: hidden; backgr
 .running-route { animation: dash-animation 1s linear infinite; }
 @keyframes dash-animation { 
     0% { stroke-dashoffset: 0; transform: translateZ(0); } 
-    100% { stroke-dashoffset: 20; transform: translateZ(0); } 
+    100% { stroke-dashoffset: -20; transform: translateZ(0); } 
 }
 
 body {
